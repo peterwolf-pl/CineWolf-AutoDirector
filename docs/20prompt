@@ -1,0 +1,2551 @@
+You are a senior Java developer specializing in Minecraft Fabric mods, replay editors, deterministic camera systems, computational geometry, collision-aware path planning, timeline integration, and cinematic montage tooling.
+
+Continue development of:
+
+# CineWolf AutoDirector
+
+Implement:
+
+# Version 1.3
+
+Version 1.3 must expand the camera generator library, improve framing and visibility analysis, strengthen collision avoidance, add persistent montage projects and user presets, improve non-destructive montage playback, and extend diagnostics.
+
+The implementation must build on the existing CineWolf AutoDirector architecture from versions 0.1, 1.1, and 1.2.
+
+Do not rewrite the project from scratch.
+
+Reuse and extend:
+
+* `ShotGenerator`
+* `ShotGeneratorRegistry`
+* `ReplayEditorAdapter`
+* `TargetPoseResolver`
+* `CollisionResolver`
+* `CameraPathPlanner`
+* `CameraPathSimplifier`
+* `CameraLookAtSolver`
+* `MontagePlanner`
+* `MontagePlan`
+* `PlannedMontageShot`
+* `MontagePreviewController`
+* `ReplayAnalyzer`
+* `ReplayEvent`
+* `ReplayScene`
+* `MontagePresetRegistry`
+* CineWolf undo transactions
+* Flashback adapter
+* Existing configuration and localization systems
+
+The feature must work locally.
+
+Do not use external APIs, AI services, cloud processing, telemetry, or external servers.
+
+# First steps
+
+Before modifying code:
+
+1. Inspect the complete repository.
+2. Run the existing build.
+3. Run all existing automated tests.
+4. Read:
+
+   * `README.md`
+   * `docs/ARCHITECTURE.md`
+   * `docs/FLASHBACK_INTEGRATION.md`
+   * `docs/MONTAGE_ANALYSIS.md`
+   * `docs/MONTAGE_PLANNER.md`
+   * `docs/EVENT_DETECTION.md`
+   * `docs/VERTICAL_FORMATS.md`
+   * `docs/MANUAL_TESTS.md`
+5. Identify all current shot generators.
+6. Identify the current target abstraction.
+7. Identify the current collision avoidance implementation.
+8. Inspect how montage previews currently work.
+9. Inspect how montage project data is currently stored.
+10. Inspect all existing configuration schema versions.
+11. Inspect Flashback for any supported timeline extension or overlay surface.
+
+Do not stop after planning.
+
+Implement a complete working version 1.3.
+
+Do not add fake buttons, disabled production features, placeholder generators, mock collision results, or unimplemented persistence actions.
+
+# Version 1.3 scope
+
+Implement:
+
+* Reveal shot generator
+* Crane Up shot generator
+* Crane Down shot generator
+* Spiral shot generator
+* Static Tracking shot generator
+* Side Tracking shot generator
+* Chase shot generator
+* Close Detail shot generator
+* Vehicle Profile shot generator
+* Group target support
+* Large structure target support
+* Modded vehicle framing support
+* Stronger subject visibility analysis
+* Stronger framing validation
+* Lateral collision path translation
+* Orbit radius reduction
+* Collision-aware path shortening
+* Inserted control points
+* Replay-specific montage project persistence
+* User-defined preset import
+* User-defined preset export
+* Rich non-destructive montage playback
+* Investigation and optional implementation of native timeline event visualization
+* Improved debug JSON export
+* Improved false-positive diagnostics
+
+# Core development rules
+
+* Keep the camera engine independent from Flashback.
+* Keep Flashback-specific code inside the Flashback adapter and mixin packages.
+* Do not add Flashback imports to core camera, montage, geometry, or persistence packages.
+* Do not break existing project files.
+* Do not silently migrate or overwrite user presets.
+* Do not modify unrelated user keyframes.
+* Do not permanently alter the replay during preview.
+* Do not claim native timeline integration when only a custom overlay is implemented.
+* Preserve compatibility with all existing shot generators.
+* Preserve the deterministic behavior of replay analysis and montage generation.
+* Use stable, versioned schemas for all persistent files.
+* Add automated tests for all new core behavior.
+* Update documentation and changelog.
+
+# Part 1: New shot generators
+
+Add the following shot types to the existing shot generator registry:
+
+```java
+public enum ShotType {
+    ORBIT,
+    FOLLOW,
+    FLYBY,
+    DOLLY_IN,
+    DOLLY_OUT,
+    REVEAL,
+    CRANE_UP,
+    CRANE_DOWN,
+    SPIRAL,
+    STATIC_TRACKING,
+    SIDE_TRACKING,
+    CHASE,
+    CLOSE_DETAIL,
+    VEHICLE_PROFILE
+}
+```
+
+Adapt the enum to the current codebase.
+
+Do not duplicate types that already exist.
+
+Every generator must:
+
+* Implement `ShotGenerator`
+* Validate its request
+* Generate deterministic camera samples
+* Work with the existing easing system
+* Work with collision resolution
+* Support preview
+* Support keyframe simplification
+* Return clear warnings
+* Support dynamic targets when appropriate
+* Avoid non-finite coordinates
+* Avoid sudden yaw changes
+* Preserve first and last camera samples
+* Expose supported target types
+* Expose suggested framing categories
+* Expose montage compatibility metadata
+
+Suggested additional interface methods:
+
+```java
+Set<TargetKind> supportedTargetKinds();
+
+Set<FramingType> supportedFramingTypes();
+
+ShotCapabilities capabilities();
+
+ShotParameterSchema parameterSchema();
+```
+
+Use the current architecture if equivalent metadata already exists.
+
+## Reveal generator
+
+The Reveal shot should begin with the subject partially or fully hidden by foreground geometry and then move the camera until the target becomes visible.
+
+Support reveal styles:
+
+* Horizontal reveal from left
+* Horizontal reveal from right
+* Vertical reveal from below
+* Vertical reveal from above
+* Reveal from behind foreground object
+* Reveal around structure corner
+
+Suggested model:
+
+```java
+public enum RevealDirection {
+    LEFT_TO_RIGHT,
+    RIGHT_TO_LEFT,
+    BOTTOM_TO_TOP,
+    TOP_TO_BOTTOM,
+    AUTO
+}
+```
+
+Suggested parameters:
+
+* Reveal direction
+* Start distance
+* End distance
+* Height
+* Horizontal offset
+* Reveal duration
+* Foreground clearance
+* Target visibility threshold
+* FOV
+* Easing
+* Look ahead
+* Collision avoidance
+
+The generator should:
+
+1. Resolve the target focus point.
+2. Find candidate occluding blocks or surfaces.
+3. Place the start position where the target is hidden or partially hidden.
+4. Place the end position where the target is sufficiently visible.
+5. Generate a smooth path between these positions.
+6. Validate that the reveal actually increases target visibility.
+7. Fall back to a side reveal when no suitable foreground geometry exists.
+
+Do not deliberately place the camera inside solid blocks.
+
+A Reveal path should receive a warning when the target is already fully visible at the first sample.
+
+## Crane Up generator
+
+The Crane Up shot moves the camera vertically upward while maintaining subject framing.
+
+Suggested parameters:
+
+* Start height
+* End height
+* Horizontal distance
+* Horizontal drift
+* Duration
+* FOV start
+* FOV end
+* Look ahead
+* Easing
+* Maintain target size
+* Collision avoidance
+
+The generator should support:
+
+* Pure vertical lift
+* Vertical lift with slow pullback
+* Vertical lift with slight orbit
+* Structure reveal
+* Vehicle departure shot
+* Location establishing shot
+
+When `Maintain Target Size` is enabled, compensate for increased distance using camera movement and optional FOV adjustment.
+
+Avoid extreme FOV changes.
+
+## Crane Down generator
+
+The Crane Down shot should invert or complement Crane Up.
+
+Use cases:
+
+* Descending into a scene
+* Moving from a wide location view to a character
+* Approaching a vehicle
+* Transitioning from a structure overview to a detail
+* Ending above a target and moving toward it
+
+Validate ground and roof clearance.
+
+Do not allow the camera to descend below a configured minimum ground clearance.
+
+## Spiral generator
+
+The Spiral shot combines orbit motion with vertical and optionally radial motion.
+
+Suggested parameters:
+
+* Start radius
+* End radius
+* Start height
+* End height
+* Revolutions
+* Direction
+* Duration
+* FOV start
+* FOV end
+* Easing
+* Look ahead
+* Maintain target size
+* Collision avoidance
+
+Suggested formula:
+
+```text
+progress = easing(t / duration)
+
+radius = lerp(startRadius, endRadius, progress)
+height = lerp(startHeight, endHeight, progress)
+angle = startAngle + directionSign * revolutions * 2 * PI * progress
+
+cameraX = targetX + radius * cos(angle)
+cameraY = targetY + height
+cameraZ = targetZ + radius * sin(angle)
+```
+
+Support:
+
+* Spiral inward
+* Spiral outward
+* Spiral upward
+* Spiral downward
+* Combined vertical and radial spiral
+
+Reject values that would place the camera inside the target bounding volume.
+
+## Static Tracking generator
+
+Static Tracking places the camera at a fixed world position while continuously tracking a moving subject.
+
+Suggested parameters:
+
+* Camera position
+* Height
+* Distance
+* Side offset
+* Duration
+* FOV
+* Look ahead
+* Rotation smoothing
+* Reframe threshold
+* Allow limited repositioning
+
+By default, camera position must remain fixed.
+
+When `Allow Limited Repositioning` is enabled, the camera may move within a small configurable radius to preserve visibility.
+
+Use cases:
+
+* Trackside train camera
+* Runway camera
+* Street corner camera
+* Fixed observer camera
+* Combat observation camera
+* Building activity overview
+
+The camera should not rotate wildly when the target passes very close.
+
+Add angular velocity limits.
+
+## Side Tracking generator
+
+Side Tracking moves parallel to the subject.
+
+Suggested parameters:
+
+* Side
+* Distance
+* Height
+* Forward offset
+* Duration
+* Camera speed
+* Smoothing
+* FOV
+* Look ahead
+* Maintain parallel direction
+* Collision avoidance
+
+Suggested enum:
+
+```java
+public enum TrackingSide {
+    LEFT,
+    RIGHT,
+    AUTO
+}
+```
+
+Determine direction using:
+
+1. Smoothed target velocity
+2. Vehicle forward direction
+3. Entity yaw
+4. Previous valid direction
+
+The camera should remain approximately perpendicular to the movement direction.
+
+Side Tracking should support:
+
+* Players
+* Minecarts
+* Boats
+* Horses
+* Aircraft
+* Modded vehicles
+* Zip-line travel
+
+## Chase generator
+
+Chase is a more dynamic version of Follow.
+
+The camera follows behind the target with stronger velocity prediction and dynamic distance.
+
+Suggested parameters:
+
+* Base distance
+* Minimum distance
+* Maximum distance
+* Height
+* Velocity distance multiplier
+* Acceleration response
+* Turn response
+* Camera responsiveness
+* Look ahead
+* FOV minimum
+* FOV maximum
+* Speed-based FOV
+* Collision avoidance
+
+The camera distance may increase with speed.
+
+Suggested behavior:
+
+```text
+targetDistance =
+    baseDistance
+    + targetSpeed * velocityDistanceMultiplier
+```
+
+Clamp the result.
+
+Add lateral lag during turns to create cinematic movement, but do not let the camera swing through structures.
+
+Use strong smoothing.
+
+Avoid motion sickness caused by rapid direction changes.
+
+## Close Detail generator
+
+Close Detail generates a close-up focused on a selected detail point rather than the general entity center.
+
+Support detail targets such as:
+
+* Player face
+* Player held item
+* Entity head
+* Vehicle wheel
+* Vehicle cockpit
+* Vehicle wing
+* Locomotive front
+* Minecart coupling
+* Structure block
+* Structure feature
+* User-selected focus point
+
+Suggested model:
+
+```java
+public enum DetailTargetType {
+    ENTITY_HEAD,
+    ENTITY_HAND,
+    HELD_ITEM,
+    VEHICLE_FRONT,
+    VEHICLE_REAR,
+    VEHICLE_SIDE,
+    VEHICLE_COCKPIT,
+    VEHICLE_WING,
+    STRUCTURE_POINT,
+    CUSTOM_POINT,
+    AUTO
+}
+```
+
+Suggested parameters:
+
+* Detail target
+* Camera distance
+* Height offset
+* Side offset
+* Duration
+* FOV
+* Depth-style movement
+* Micro orbit amount
+* Focus smoothing
+* Collision avoidance
+
+Do not assume that every entity has player-like body parts.
+
+Use provider-based detail anchors.
+
+Fallback to bounding-box anchor points.
+
+## Vehicle Profile generator
+
+Vehicle Profile should generate vehicle-aware cinematic shots.
+
+Support profile styles:
+
+```java
+public enum VehicleProfileStyle {
+    FRONT_THREE_QUARTER,
+    REAR_THREE_QUARTER,
+    SIDE_PROFILE,
+    LOW_ANGLE_SIDE,
+    HIGH_ANGLE_SIDE,
+    WING_VIEW,
+    LOCOMOTIVE_FRONT,
+    TRAIN_LENGTH,
+    TRACKSIDE,
+    RUNWAY,
+    AUTO
+}
+```
+
+The generator should use vehicle dimensions, forward direction, velocity, and provider-specific anchors.
+
+Suggested parameters:
+
+* Profile style
+* Distance
+* Height
+* Side
+* Forward offset
+* Duration
+* Speed matching
+* FOV
+* Look ahead
+* Collision avoidance
+
+Prepare built-in support for:
+
+* Minecart
+* Boat
+* Horse
+* Generic vehicle
+* Train-like multi-entity group
+* Aircraft-like vehicle
+* Zip-line rider
+
+Prepare soft integration for:
+
+* Minecart Chain Train
+* PeterWolf's Planes
+* Zip-line
+* Third-party vehicle mods
+
+Do not introduce hard dependencies.
+
+# Part 2: Target model expansion
+
+Extend target support beyond a single entity.
+
+Implement:
+
+```java
+public sealed interface CinematicTarget
+    permits EntityTarget,
+            GroupTarget,
+            StructureTarget,
+            AreaTarget,
+            VehicleTarget,
+            DetailTarget {
+}
+```
+
+Adapt this concept to the existing architecture.
+
+## Entity target
+
+Represents one replay entity.
+
+Keep current behavior.
+
+## Group target
+
+Represents multiple entities that should remain in frame.
+
+Examples:
+
+* Combat group
+* Train passengers
+* Group of players
+* Herd
+* Vehicle convoy
+* Main target plus nearby secondary target
+
+Suggested model:
+
+```java
+public record GroupTarget(
+    UUID groupId,
+    List<TargetReference> members,
+    GroupFocusMode focusMode
+) implements CinematicTarget {}
+```
+
+Suggested focus modes:
+
+* Bounding box center
+* Weighted target center
+* Primary subject biased
+* Motion center
+* Event center
+
+Calculate:
+
+* Combined bounding box
+* Group center
+* Group radius
+* Group movement direction
+* Visible member ratio
+* Primary member
+* Group spread
+* Group stability
+
+Handle members appearing and disappearing.
+
+Do not fail the entire path because one secondary group member becomes unavailable.
+
+## Structure target
+
+Represents a selected cuboid, detected structure, Blueprint Strings area, or manually selected block volume.
+
+Suggested model:
+
+```java
+public record StructureTarget(
+    String id,
+    BlockBox bounds,
+    List<Vec3> focusPoints,
+    StructureTargetMetadata metadata
+) implements CinematicTarget {}
+```
+
+Support:
+
+* Manual two-corner selection
+* Selected cuboid from existing CineWolf tools
+* Soft integration with Blueprint Strings
+* Center focus
+* Highest point focus
+* Front facade focus
+* User-defined detail point
+* Automatic best visible side
+
+Calculate:
+
+* Bounding box
+* Dimensions
+* Center
+* Corners
+* Major axis
+* Approximate facade directions
+* Required framing distance
+* Suggested camera elevation
+* Suggested orbit radius
+
+Do not scan unbounded world areas.
+
+Apply configurable structure size limits.
+
+## Area target
+
+Represents a selected world area without requiring a solid structure.
+
+Use cases:
+
+* Landscape
+* Village
+* Farm
+* Station
+* Runway
+* Battlefield
+* Build site
+
+## Vehicle target
+
+Represents a vehicle and its relevant connected parts.
+
+Examples:
+
+* Aircraft entity
+* Minecart train
+* Boat with passengers
+* Multi-entity vehicle
+* Modded vehicle with child entities
+
+Support provider-defined:
+
+* Root entity
+* Connected entities
+* Forward direction
+* Up direction
+* Bounding volume
+* Camera anchors
+* Detail anchors
+* Vehicle category
+* Vehicle state
+* Wheel, wing, cockpit, engine, carriage, or coupling points
+
+## Detail target
+
+Represents a local anchor attached to an entity, vehicle, or structure.
+
+# Part 3: Visibility analysis
+
+Create or strengthen a reusable visibility analyzer.
+
+Suggested interface:
+
+```java
+public interface TargetVisibilityAnalyzer {
+    VisibilityResult analyze(
+        CameraPose camera,
+        CinematicTarget target,
+        long replayTime,
+        VisibilityContext context
+    );
+}
+```
+
+Suggested result:
+
+```java
+public record VisibilityResult(
+    double visibleRatio,
+    double primarySubjectVisibility,
+    double screenCoverage,
+    double occlusionRatio,
+    boolean insideFrustum,
+    boolean insideSafeArea,
+    boolean tooClose,
+    boolean tooFar,
+    List<VisibilityIssue> issues,
+    List<VisibilitySample> samples
+) {}
+```
+
+The analyzer should evaluate:
+
+* Target visibility
+* Occlusion by blocks
+* Camera inside solid geometry
+* Frustum inclusion
+* Vertical safe area
+* Horizontal safe area
+* Target screen coverage
+* Group member visibility
+* Structure corner visibility
+* Vehicle orientation
+* Primary subject prominence
+* Minimum subject size
+* Maximum subject size
+* Camera-to-target distance
+* Camera clipping risk
+
+## Visibility sampling
+
+For entities, sample:
+
+* Head or focus point
+* Body center
+* Bounding box corners
+* Important anchors
+
+For groups, sample:
+
+* Group center
+* Primary target
+* Member focus points
+* Combined bounding box corners
+
+For structures, sample:
+
+* Center
+* Corners
+* Highest points
+* Facade points
+* User-defined focus points
+
+For vehicles, sample:
+
+* Root center
+* Front
+* Rear
+* Side anchors
+* Cockpit
+* Vehicle corners
+* Provider-defined anchors
+
+Use ray casts when safe and supported.
+
+Avoid excessive ray casting.
+
+Use configurable visibility sample limits.
+
+Cache repeated visibility queries within one path calculation.
+
+## Framing score
+
+Create a framing scoring model:
+
+```text
+framingScore =
+    visibilityWeight * visibilityScore
+    + safeAreaWeight * safeAreaScore
+    + coverageWeight * coverageScore
+    + compositionWeight * compositionScore
+    + groupWeight * groupCoverageScore
+    + directionWeight * vehicleDirectionScore
+    - clippingPenalty
+    - excessiveDistancePenalty
+    - excessiveCloseupPenalty
+```
+
+Use this score in:
+
+* Path validation
+* Montage shot selection
+* Collision strategy selection
+* Shot fallback selection
+* Preview warnings
+
+## Group framing
+
+For group targets:
+
+* Require a configurable minimum visible member ratio.
+* Keep the primary subject inside the stronger safe zone.
+* Avoid cutting secondary subjects at the frame edge.
+* Increase camera distance based on group spread.
+* Adjust camera height for vertically separated members.
+* Avoid excessive empty space.
+
+## Large structure framing
+
+For structures:
+
+* Calculate required distance from dimensions and FOV.
+* Prefer camera positions that expose multiple faces.
+* Avoid framing only the structure center when important edges are cropped.
+* Support horizontal, vertical, and diagonal composition.
+* Support tall structures.
+* Support wide structures.
+* Support long trains and runways.
+* Warn when the structure cannot fit inside the selected aspect ratio.
+
+## Modded vehicle framing
+
+For vehicles:
+
+* Use provider-defined bounds where available.
+* Consider travel direction.
+* Preserve front-to-rear orientation.
+* Avoid framing only the root entity when visual parts extend beyond it.
+* Keep critical anchors visible.
+* Adjust framing based on speed.
+* Apply larger lead space in front of a moving vehicle.
+* Use vertical lead space for climbing aircraft.
+
+# Part 4: Collision avoidance improvements
+
+Extend the existing collision resolver.
+
+Implement the following strategies:
+
+* Vertical translation
+* Lateral translation
+* Radius reduction
+* Radius increase where useful
+* Path shortening
+* Inserted control points
+* Segment rerouting
+* Strategy combination
+
+Suggested strategy enum:
+
+```java
+public enum CollisionStrategy {
+    NONE,
+    VERTICAL_TRANSLATION,
+    LATERAL_TRANSLATION,
+    RADIUS_REDUCTION,
+    RADIUS_INCREASE,
+    PATH_SHORTENING,
+    CONTROL_POINT_INSERTION,
+    SEGMENT_REROUTING,
+    COMBINED
+}
+```
+
+## Collision analysis
+
+For each path segment, detect:
+
+* Camera point inside a block
+* Segment crossing solid geometry
+* Near-wall clipping risk
+* Target occlusion
+* Insufficient ground clearance
+* Insufficient roof clearance
+* Unsafe proximity to target
+* Unsafe proximity to vehicle
+* Path discontinuity
+* Excessive rerouting curvature
+
+Return collision clusters rather than isolated collision samples.
+
+Suggested model:
+
+```java
+public record CollisionCluster(
+    int firstSampleIndex,
+    int lastSampleIndex,
+    BlockBox affectedBounds,
+    CollisionSeverity severity,
+    List<CollisionSample> samples
+) {}
+```
+
+## Lateral translation
+
+Move a blocked path segment sideways.
+
+Determine candidate directions using:
+
+* Path tangent
+* World up
+* Target direction
+* Obstacle surface normal
+* Available clearance
+
+Test both left and right directions.
+
+Choose the direction with:
+
+* Lower collision count
+* Better target visibility
+* Lower path deformation
+* Better framing
+* Lower curvature
+
+Apply smooth blending before and after the translated segment.
+
+Do not create sharp lateral jumps.
+
+## Radius reduction
+
+For orbit and spiral shots, reduce radius when the outer path intersects nearby terrain or walls.
+
+Requirements:
+
+* Respect minimum radius
+* Preserve target safe distance
+* Preserve approximate angular progression
+* Avoid abrupt radius changes
+* Smoothly enter and exit reduced-radius sections
+* Validate visibility after reduction
+
+Radius reduction should be local when possible.
+
+Do not shrink the entire orbit because of one small obstacle unless local correction produces a worse result.
+
+## Radius increase
+
+Allow radius increase when the camera path is blocked by inner geometry or when a larger radius improves target visibility.
+
+Respect maximum radius and framing limits.
+
+## Path shortening
+
+When a shot cannot be resolved safely over its full duration:
+
+* Shorten the start
+* Shorten the end
+* Remove an invalid middle segment only when the shot type permits
+* Preserve the highest-value event peak
+* Respect minimum shot duration
+* Warn the montage planner about the reduced duration
+
+Examples:
+
+* Shorten a flyby before a wall.
+* End a chase before entering a tunnel.
+* Start a reveal after an impossible initial position.
+* Shorten an orbit around a structure when one side is fully blocked.
+
+Do not silently shorten shots.
+
+Return:
+
+* Original duration
+* New duration
+* Removed replay interval
+* Reason
+* Confidence
+
+## Inserted control points
+
+Insert additional control points around obstacles.
+
+Use a smooth curve such as:
+
+* Cubic Bezier
+* Catmull-Rom
+* Hermite spline
+* Existing CineWolf path spline abstraction
+
+Do not introduce a second incompatible path curve system.
+
+Candidate control points should be evaluated for:
+
+* Clearance
+* Visibility
+* Framing
+* Curvature
+* Camera speed
+* Acceleration
+* Distance from original path
+* Distance from target
+* Distance from obstacle
+
+Limit inserted control points per collision cluster.
+
+Avoid overly complex paths.
+
+## Collision strategy scoring
+
+For every collision cluster, generate candidate resolutions.
+
+Score each candidate:
+
+```text
+resolutionScore =
+    collisionRemovalScore
+    + visibilityScore
+    + framingScore
+    + continuityScore
+    + shotIntentScore
+    - pathDeviationPenalty
+    - curvaturePenalty
+    - durationPenalty
+    - complexityPenalty
+```
+
+Choose the highest valid score.
+
+Store the selected strategy and rejected candidate reasons for diagnostics.
+
+## Collision fallback chain
+
+Suggested fallback order:
+
+1. Small vertical translation
+2. Small lateral translation
+3. Local radius adjustment
+4. Insert control point
+5. Shorten path
+6. Use alternate shot direction
+7. Use alternate shot type
+8. Mark shot invalid
+
+Do not use one fixed fallback order for every shot type.
+
+Each shot generator may expose preferred collision strategies.
+
+# Part 5: Montage planner updates
+
+Update montage planning to use the new shot generators.
+
+Add mappings such as:
+
+## Reveal
+
+Use for:
+
+* New scene
+* New structure
+* Building showcase
+* Vehicle introduction
+* Character introduction
+* Trailer intro
+* Cinematic Showcase intro
+
+## Crane Up
+
+Use for:
+
+* Establishing shot
+* Structure overview
+* Village reveal
+* Train departure
+* Build completion
+* Scene ending
+
+## Crane Down
+
+Use for:
+
+* Character introduction
+* Vehicle introduction
+* Transition from location to action
+* Detail discovery
+
+## Spiral
+
+Use for:
+
+* Major structure
+* Hero moment
+* Vehicle turn
+* Flight
+* Trailer climax
+* Cinematic Showcase
+
+Use sparingly.
+
+## Static Tracking
+
+Use for:
+
+* Trackside train shot
+* Runway shot
+* Combat observation
+* Building activity
+* Landing
+* Vehicle passing camera
+
+## Side Tracking
+
+Use for:
+
+* Running
+* Minecart
+* Train
+* Boat
+* Aircraft
+* Zip-line
+* Convoy
+* Parallel movement
+
+## Chase
+
+Use for:
+
+* High speed
+* Acceleration
+* Combat pursuit
+* Vehicle movement
+* Flight
+* Escape sequence
+
+## Close Detail
+
+Use for:
+
+* Pause
+* Held item
+* Vehicle detail
+* Build detail
+* Character face
+* Locomotive front
+* Aircraft cockpit
+* Trailer detail cut
+
+## Vehicle Profile
+
+Use for:
+
+* Minecart train
+* Aircraft
+* Boats
+* Modded vehicles
+* Vehicle entering scene
+* Vehicle turn
+* Takeoff
+* Landing
+* Vehicle showcase
+
+Update shot diversity scoring.
+
+Do not allow the new generators to dominate every montage.
+
+Add configurable per-shot maximum usage.
+
+Example:
+
+```java
+Map<ShotType, Integer> maximumUsagePerMontage;
+```
+
+# Part 6: Replay-specific montage project persistence
+
+Implement persistent montage projects tied to a specific replay.
+
+The user should be able to:
+
+* Save a montage project
+* Load a montage project
+* Rename a montage project
+* Duplicate a montage project
+* Delete a montage project
+* Restore the latest autosaved draft
+* Continue editing after reopening the replay
+
+## Replay identity
+
+Create a stable replay identity model.
+
+Possible identity components:
+
+* Replay file path hash
+* Replay metadata UUID
+* Replay duration
+* Replay creation timestamp
+* World or server identifier
+* Replay checksum where practical
+
+Do not rely only on the replay filename.
+
+Suggested model:
+
+```java
+public record ReplayIdentity(
+    String stableId,
+    String displayName,
+    long replayDuration,
+    Instant replayCreatedAt,
+    String metadataFingerprint
+) {}
+```
+
+## Project schema
+
+Create a versioned schema:
+
+```java
+public record MontageProjectFile(
+    int schemaVersion,
+    String cineWolfVersion,
+    ReplayIdentity replayIdentity,
+    UUID projectId,
+    String projectName,
+    Instant createdAt,
+    Instant modifiedAt,
+    ReplayAnalysisSettings analysisSettings,
+    ReplayAnalysisSummary analysisSummary,
+    MontagePresetReference preset,
+    MontagePlanData montagePlan,
+    List<ShotEditData> shotEdits,
+    List<UUID> lockedShotIds,
+    ProjectUiState uiState
+) {}
+```
+
+Store compact summaries.
+
+Do not store raw replay world data.
+
+Do not store full target pose samples unless required for reproducibility.
+
+## Storage location
+
+Use a replay-specific path such as:
+
+```text
+config/cinewolf-autodirector/projects/<replay-stable-id>/
+```
+
+Alternative replay-local storage may be used only when it is safe and does not modify the replay archive unexpectedly.
+
+Document the chosen strategy.
+
+## Autosave
+
+Autosave after:
+
+* Analysis completion
+* Preset change
+* Shot reorder
+* Shot edit
+* Shot enable or disable
+* Shot lock or unlock
+* Successful generation
+
+Use debouncing.
+
+Do not write to disk on every UI frame.
+
+Keep:
+
+* Current project
+* Previous autosave
+* Recovery copy during schema migration
+
+## Project loading validation
+
+When loading:
+
+* Validate schema
+* Validate replay identity
+* Validate source replay range
+* Validate target references
+* Validate shot types
+* Validate preset availability
+* Validate generated parameters
+* Validate optional mod profiles
+
+When a target no longer resolves:
+
+* Mark the shot as unavailable
+* Preserve the project
+* Allow target replacement
+* Do not delete the shot automatically
+
+# Part 7: User-defined preset import and export
+
+Implement safe user-defined montage preset import and export.
+
+Do not import Java classes, scripts, code, commands, or executable data.
+
+Use declarative JSON.
+
+## Preset schema
+
+Create a hardened, versioned schema.
+
+Suggested model:
+
+```java
+public record UserMontagePresetFile(
+    int schemaVersion,
+    String presetId,
+    String displayName,
+    String description,
+    String author,
+    String cineWolfMinimumVersion,
+    MontagePresetData preset,
+    Map<ReplayEventType, Double> eventWeights,
+    Map<ShotType, Double> shotWeights,
+    Map<ShotType, Integer> maximumShotUsage,
+    List<ShotTemplateData> shotTemplates
+) {}
+```
+
+## Schema hardening
+
+Validate:
+
+* Schema version
+* String lengths
+* Allowed enum values
+* Numeric ranges
+* Collection sizes
+* Unique IDs
+* Shot availability
+* Event availability
+* Duration ranges
+* FOV ranges
+* Camera distance ranges
+* Speed ranges
+* Sampling ranges
+* Maximum shot count
+* Maximum template count
+* Unknown fields
+* Recursive or nested data depth
+* File size
+
+Do not deserialize arbitrary classes.
+
+Do not use Java native serialization.
+
+Do not enable polymorphic JSON type loading.
+
+Do not accept file paths from imported presets.
+
+Do not accept executable expressions.
+
+Do not allow imported presets to change global CineWolf security or performance limits.
+
+## Export formats
+
+Support:
+
+* Save preset as JSON file
+* Copy preset as compact text
+* Copy preset as Base64-compressed text when already supported by the CineWolf preset architecture
+
+Add a recognizable prefix, for example:
+
+```text
+CINEWOLF_PRESET_V1:
+```
+
+Use a checksum.
+
+Reject corrupted text.
+
+## Import behavior
+
+On import:
+
+1. Parse the prefix.
+2. Verify checksum.
+3. Decompress if needed.
+4. Validate JSON.
+5. Validate schema.
+6. Validate numeric limits.
+7. Resolve shot types.
+8. Show a summary.
+9. Show warnings.
+10. Require confirmation.
+11. Save as a new preset.
+
+Do not overwrite an existing preset without explicit confirmation.
+
+When IDs conflict, offer:
+
+* Import as copy
+* Replace existing preset
+* Cancel
+
+Default to Import as copy.
+
+## Preset management UI
+
+Add:
+
+* New Preset
+* Duplicate Preset
+* Rename Preset
+* Edit Preset
+* Export File
+* Copy as Text
+* Import File
+* Import Text
+* Delete Preset
+* Restore Built-in Defaults
+
+Built-in presets must remain read-only.
+
+Allow users to duplicate a built-in preset and modify the copy.
+
+# Part 8: Rich non-destructive montage playback
+
+Improve montage preview so the user can watch the planned montage without permanently changing the Flashback timeline.
+
+Create a robust preview session model.
+
+Suggested interface:
+
+```java
+public interface MontagePlaybackSession extends AutoCloseable {
+    void play();
+    void pause();
+    void stop();
+    void seekOutputTime(double outputTime);
+    void nextShot();
+    void previousShot();
+    PlaybackState state();
+    PlaybackFrame currentFrame();
+    void close();
+}
+```
+
+## Preview requirements
+
+The preview should support:
+
+* Full montage playback
+* Play
+* Pause
+* Stop
+* Seek
+* Previous shot
+* Next shot
+* Loop montage
+* Loop selected shot
+* Playback speed
+* Shot boundary display
+* Current source replay timestamp
+* Current output montage timestamp
+* Current shot type
+* Current event type
+* Current target
+* Warning display
+* Vertical safe-area overlay
+* Collision warning overlay
+* Path overlay
+* Optional framing guides
+
+The preview should play:
+
+* Camera position
+* Camera rotation
+* FOV
+* Replay source time
+* Replay speed mapping
+* Shot transitions represented by hard cuts
+
+## Non-destructive behavior
+
+The preview must not permanently modify:
+
+* Camera keyframes
+* FOV keyframes
+* Replay-time keyframes
+* User markers
+* Existing CineWolf shots
+* Existing montage metadata
+
+Preferred implementation order:
+
+1. In-memory CineWolf camera playback
+2. Supported Flashback preview API
+3. Temporary isolated preview transaction
+4. Temporary keyframes with guaranteed snapshot restoration
+
+Choose the safest option supported by the current environment.
+
+## State restoration
+
+Before preview, store:
+
+* Current replay time
+* Current camera pose
+* Current FOV
+* Current editor selection
+* Playback state
+* Active timeline layer
+* Selected keyframes where accessible
+* CineWolf preview overlays
+
+On exit, restore all state.
+
+Restoration must occur after:
+
+* Normal preview exit
+* Closing the replay
+* Changing dimension
+* Analysis cancellation
+* Exception
+* Mod disable
+* Minecraft screen change
+
+Use a `try/finally` style lifecycle or equivalent guarded cleanup.
+
+## Preview caching
+
+Precompute or cache:
+
+* Shot paths
+* Time mappings
+* Keyframe interpolation
+* Visibility warnings
+* Collision diagnostics
+
+Do not regenerate all shots every preview frame.
+
+Invalidate only changed shots.
+
+## Editing during preview
+
+Allow:
+
+* Pause preview
+* Select current shot
+* Edit current shot
+* Regenerate current unlocked shot
+* Resume from shot start
+
+Do not allow unsafe simultaneous timeline writes while preview is active.
+
+# Part 9: Native timeline event visualization investigation
+
+Investigate whether the installed Flashback version exposes a supported method to add custom timeline tracks, markers, overlays, or editor decorations.
+
+Preferred integration order:
+
+1. Official public extension API
+2. Public event hooks
+3. Supported custom overlay surface
+4. Narrow mixin into rendering only
+5. CineWolf-owned overlay adjacent to timeline
+
+Do not patch core timeline logic when a safer overlay exists.
+
+## Investigation output
+
+Document:
+
+* Flashback classes inspected
+* Public methods found
+* Extension points found
+* Compatibility risks
+* Chosen approach
+* Rejected approaches
+* Version checks
+* Failure behavior
+
+## Implementation
+
+If a supported or low-risk surface exists, add a CineWolf event visualization track containing:
+
+* Movement events
+* Turns
+* Altitude
+* Combat
+* Damage
+* Death
+* Vehicles
+* Flight
+* Landing
+* Building activity
+* Pauses
+* Replay markers
+
+Event markers should support:
+
+* Click
+* Hover tooltip
+* Event score
+* Confidence
+* Peak replay timestamp
+* Event type
+* Target
+* Source detector
+* False-positive hints
+* Related montage shots
+
+Do not modify native replay markers.
+
+If no safe surface exists:
+
+* Keep the existing CineWolf timeline overlay.
+* Improve alignment and interaction.
+* Document why native timeline integration was not implemented.
+* Do not use unstable invasive mixins only to satisfy the feature list.
+
+The build must remain functional when Flashback internals change.
+
+# Part 10: Debug JSON export
+
+Improve the existing debug export.
+
+Create a versioned debug bundle.
+
+Suggested structure:
+
+```java
+public record CineWolfDebugExport(
+    int schemaVersion,
+    String cineWolfVersion,
+    String minecraftVersion,
+    String fabricLoaderVersion,
+    String flashbackVersion,
+    ReplayIdentity replay,
+    DebugAnalysisSettings settings,
+    DebugSamplingSummary sampling,
+    List<DebugTargetSummary> targets,
+    List<DebugEventRecord> events,
+    List<DebugSceneRecord> scenes,
+    DebugMontagePlan montage,
+    List<DebugShotRecord> shots,
+    List<DebugCollisionRecord> collisions,
+    List<DebugVisibilityRecord> visibility,
+    List<DebugFalsePositiveRecord> falsePositives,
+    List<DebugWarning> warnings,
+    DebugPerformanceMetrics performance
+) {}
+```
+
+## Export sections
+
+Include:
+
+* Replay identity summary
+* Selected replay range
+* Analysis configuration
+* Sampling rates
+* Sample counts
+* Sampling gaps
+* Tracked target counts
+* Target resolution failures
+* Event detector thresholds
+* Raw event candidates
+* Merged events
+* Rejected events
+* Final event scores
+* Scene segmentation reasons
+* Montage planning reasons
+* Rejected shot candidates
+* Shot fallback decisions
+* Visibility scores
+* Framing scores
+* Collision clusters
+* Collision candidate strategies
+* Selected collision strategies
+* Path shortening
+* Inserted control points
+* Generated keyframe counts
+* Simplification statistics
+* Preview failures
+* Timeline write failures
+* Performance timings
+
+Do not export full world data.
+
+Do not export unnecessary private paths.
+
+An optional setting may redact:
+
+* Player names
+* Replay filenames
+* World names
+* Server names
+* Mod-specific identifiers
+
+## Export UI
+
+Add:
+
+* Export Debug Summary
+* Export Full Debug JSON
+* Copy Diagnostic Summary
+* Open Debug Folder
+
+Only add Open Debug Folder if the current platform abstraction supports it safely.
+
+# Part 11: False-positive diagnostics
+
+Improve event detector diagnostics.
+
+Every detected event should expose:
+
+* Detector ID
+* Detection source
+* Input measurements
+* Thresholds
+* Confidence
+* Merge history
+* Scoring reasons
+* Rejection reasons
+* Related events
+* Possible false-positive causes
+
+Suggested model:
+
+```java
+public record EventDiagnostic(
+    String detectorId,
+    ReplayEventType eventType,
+    long startReplayTime,
+    long peakReplayTime,
+    long endReplayTime,
+    Map<String, Double> measurements,
+    Map<String, Double> thresholds,
+    double confidence,
+    List<String> evidence,
+    List<String> warnings,
+    List<FalsePositiveHint> falsePositiveHints
+) {}
+```
+
+## False-positive hints
+
+Implement diagnostic hints for cases such as:
+
+* Teleport interpreted as high speed
+* Replay sampling gap interpreted as acceleration
+* Entity unload interpreted as death
+* Dimension change interpreted as disappearance
+* Short jump interpreted as flight
+* Falling block or passenger interpreted as vehicle movement
+* Entity yaw change while stationary interpreted as turn
+* Interpolation noise interpreted as altitude change
+* Block update burst interpreted as player building
+* Damage animation interpreted as combat
+* Nearby hostile entity interpreted as combat
+* Temporary occlusion interpreted as target disappearance
+
+## Detector status
+
+Allow detectors to return:
+
+* Confirmed
+* Probable
+* Weak
+* Rejected
+
+Suggested enum:
+
+```java
+public enum DetectionConfidenceClass {
+    CONFIRMED,
+    PROBABLE,
+    WEAK,
+    REJECTED
+}
+```
+
+Weak events should be visible in debug mode but excluded from montage planning by default.
+
+## Diagnostic UI
+
+When the user selects an event, show:
+
+* Event type
+* Confidence
+* Final score
+* Detection evidence
+* Measurements
+* Thresholds
+* Merge history
+* Potential false-positive causes
+* Why it was included or excluded
+* Which montage shots use it
+
+Add an advanced debug mode.
+
+Do not overwhelm normal users with diagnostic data by default.
+
+# Part 12: Vehicle integration providers
+
+Strengthen the optional vehicle provider API.
+
+Suggested interface:
+
+```java
+public interface CineWolfVehicleProfileProvider {
+    String providerId();
+
+    boolean supports(TargetReference target, ReplayContext context);
+
+    Optional<VehicleProfile> resolveProfile(
+        TargetReference target,
+        long replayTime,
+        ReplayContext context
+    );
+
+    List<VehicleCameraAnchor> resolveCameraAnchors(
+        TargetReference target,
+        long replayTime,
+        ReplayContext context
+    );
+
+    List<DetailAnchor> resolveDetailAnchors(
+        TargetReference target,
+        long replayTime,
+        ReplayContext context
+    );
+
+    List<ShotPreset> getSuggestedShots(
+        VehicleProfile profile,
+        ReplayEvent event
+    );
+}
+```
+
+Suggested vehicle categories:
+
+```java
+public enum VehicleCategory {
+    MINECART,
+    TRAIN,
+    BOAT,
+    MOUNT,
+    GROUND_VEHICLE,
+    AIRCRAFT,
+    ZIP_LINE,
+    GENERIC
+}
+```
+
+## Generic fallback provider
+
+Implement a generic provider that uses:
+
+* Entity bounding box
+* Smoothed movement direction
+* Passenger relationship
+* Connected entity proximity
+* Velocity
+* Entity tags
+* Known vanilla types
+
+The generic provider must not crash on unknown modded vehicles.
+
+## Minecart Chain integration
+
+When available, support:
+
+* Locomotive anchor
+* Train center
+* Train front
+* Train rear
+* Between-wagons anchor
+* Train-length framing
+* Trackside shot
+* Flyover
+* Side tracking
+* Front three-quarter view
+
+## PeterWolf's Planes integration
+
+When available, support:
+
+* Aircraft root
+* Nose
+* Tail
+* Left wing
+* Right wing
+* Cockpit
+* Under-wing
+* Forward direction
+* Aircraft up direction
+* Flight state
+* Takeoff
+* Turn
+* Landing
+
+Suggested shots:
+
+* Wing view
+* Chase
+* Flyby
+* Runway camera
+* Side profile
+* Orbit during turn
+* Landing dolly out
+
+## Zip-line integration
+
+When available, support:
+
+* Rider
+* Cable direction
+* Start station
+* End station
+* Travel progress
+* Side tracking
+* Low-angle view
+* Top-down view
+* Station-to-station flyby
+
+All integrations must remain optional.
+
+# Part 13: Configuration
+
+Extend the versioned configuration.
+
+Add sections for:
+
+* New shot defaults
+* Visibility thresholds
+* Group framing
+* Structure framing
+* Vehicle framing
+* Collision strategy weights
+* Collision candidate limits
+* Path shortening limits
+* Control point limits
+* Montage project autosave
+* Project retention
+* Preset import size limits
+* Preset validation limits
+* Preview caching
+* Preview overlays
+* Timeline event visualization
+* Debug export redaction
+* False-positive diagnostics
+
+Example:
+
+```java
+public record CollisionStrategyConfig(
+    boolean allowVerticalTranslation,
+    boolean allowLateralTranslation,
+    boolean allowRadiusReduction,
+    boolean allowRadiusIncrease,
+    boolean allowPathShortening,
+    boolean allowControlPointInsertion,
+    int maximumInsertedControlPoints,
+    double maximumLateralTranslation,
+    double minimumOrbitRadius,
+    double maximumOrbitRadius,
+    double minimumShotDuration,
+    double maximumPathDeviation
+) {}
+```
+
+Add migrations from every previous supported schema.
+
+Never reset user settings silently.
+
+Create backups before complex migration.
+
+# Part 14: UI changes
+
+Update the CineWolf interface.
+
+## Shot panel
+
+Add controls for all new shot types.
+
+Show only relevant parameters.
+
+## Target selector
+
+Add target types:
+
+* Entity
+* Group
+* Vehicle
+* Structure
+* Area
+* Detail
+
+Add actions:
+
+* Select entity
+* Add group member
+* Remove group member
+* Select structure corners
+* Select focus point
+* Detect vehicle profile
+* Select detail anchor
+* Clear target
+
+## Collision panel
+
+Show:
+
+* Collision status
+* Number of blocked segments
+* Applied strategies
+* Path shortening
+* Inserted control points
+* Remaining warnings
+* Before-and-after preview toggle
+
+## Project panel
+
+Add:
+
+* New Project
+* Save Project
+* Save As
+* Load Project
+* Duplicate Project
+* Rename Project
+* Delete Project
+* Restore Autosave
+* Project Status
+
+## Preset panel
+
+Add user preset management.
+
+## Preview panel
+
+Add richer playback controls.
+
+## Debug panel
+
+Add:
+
+* Event diagnostics
+* Visibility diagnostics
+* Collision diagnostics
+* Export debug data
+* Toggle weak events
+* Toggle rejected events
+* Toggle path control points
+* Toggle framing guides
+* Toggle visibility rays
+
+Keep advanced diagnostics collapsed by default.
+
+# Part 15: Threading and performance
+
+Requirements:
+
+* Do not ray cast or analyze visibility every render frame.
+* Cache path visibility results.
+* Cache target bounds.
+* Cache structure geometry summaries.
+* Cache vehicle profiles.
+* Invalidate caches when replay time, target, or path changes.
+* Run expensive collision candidate evaluation outside the render callback.
+* Keep Minecraft world access on safe threads.
+* Copy immutable data before background calculations.
+* Cancel stale path calculations.
+* Cancel stale preview calculations.
+* Cancel analysis and preview when leaving a replay.
+* Cap visibility rays.
+* Cap collision candidates.
+* Cap inserted control points.
+* Cap structure dimensions.
+* Cap group member count.
+* Cap debug export size.
+* Stream large JSON exports when practical.
+* Avoid large temporary allocations.
+
+Add performance metrics for:
+
+* Shot generation time
+* Visibility analysis time
+* Collision analysis time
+* Collision resolution time
+* Preview preparation time
+* Project save time
+* Preset import time
+
+# Part 16: Automated testing
+
+Add automated tests.
+
+## New shot generators
+
+Test:
+
+* Reveal visibility progression
+* Reveal fallback behavior
+* Crane Up position and framing
+* Crane Down ground clearance
+* Spiral radius interpolation
+* Spiral height interpolation
+* Spiral direction
+* Static Tracking fixed position
+* Static Tracking angular limits
+* Side Tracking left and right
+* Side Tracking moving direction fallback
+* Chase dynamic distance
+* Chase speed-based FOV
+* Close Detail anchor fallback
+* Vehicle Profile generic fallback
+
+## Target models
+
+Test:
+
+* Group bounding box
+* Group center
+* Group member disappearance
+* Primary subject weighting
+* Structure bounds
+* Structure major axis
+* Structure framing distance
+* Vehicle connected entities
+* Detail anchor resolution
+
+## Visibility
+
+Test:
+
+* Fully visible entity
+* Fully occluded entity
+* Partial occlusion
+* Group visible ratio
+* Primary target visibility
+* Structure corner visibility
+* Vertical safe area
+* Excessive close-up
+* Excessive distance
+* Camera inside block
+* Vehicle lead space
+
+## Collision strategies
+
+Test:
+
+* Lateral translation left
+* Lateral translation right
+* Best side selection
+* Radius reduction
+* Radius increase
+* Path shortening start
+* Path shortening end
+* Peak event preservation
+* Control point insertion
+* Control point limit
+* Collision cluster grouping
+* Strategy scoring
+* Invalid resolution rejection
+* Smooth blend around corrected segment
+* Visibility after collision correction
+
+## Persistence
+
+Test:
+
+* New project save
+* Project load
+* Replay identity match
+* Replay identity mismatch
+* Autosave
+* Recovery from interrupted save
+* Schema migration
+* Missing target
+* Missing shot type
+* Unknown optional provider
+* Malformed project file
+
+## Preset import and export
+
+Test:
+
+* JSON export
+* Text export
+* Checksum validation
+* Corrupted text
+* Unsupported schema
+* Invalid enum
+* Excessive file size
+* Excessive nesting
+* Invalid numeric range
+* Duplicate preset ID
+* Import as copy
+* Replace existing
+* Built-in preset protection
+
+## Preview
+
+Test:
+
+* Preview start
+* Preview pause
+* Preview seek
+* Next shot
+* Previous shot
+* Loop montage
+* Loop shot
+* State restoration
+* Exception cleanup
+* Replay close cleanup
+* Changed shot cache invalidation
+* Non-destructive timeline behavior
+
+## Diagnostics
+
+Test:
+
+* False-positive hint for teleport
+* Sampling gap warning
+* Entity unload versus death
+* Jump versus flight
+* Stationary yaw turn rejection
+* Weak event exclusion
+* Debug JSON schema
+* Redacted export
+* Collision diagnostic records
+* Visibility diagnostic records
+
+Keep tests independent from Minecraft where practical.
+
+# Part 17: Manual testing
+
+Update `docs/MANUAL_TESTS.md`.
+
+Include:
+
+1. Generate every new shot type around a player.
+2. Generate every compatible shot type around a moving mob.
+3. Test Side Tracking with left and right sides.
+4. Test Chase during running.
+5. Test Chase with a vehicle.
+6. Test Static Tracking with a minecart passing the camera.
+7. Test Crane Up around a tall building.
+8. Test Crane Down toward a player.
+9. Test Spiral around a structure.
+10. Test Reveal from behind a wall.
+11. Test Reveal without suitable foreground geometry.
+12. Test Close Detail on a player head.
+13. Test Close Detail on a held item.
+14. Test Vehicle Profile on a minecart.
+15. Test Vehicle Profile on a modded vehicle.
+16. Test a group of players.
+17. Test a combat group.
+18. Test a long train group.
+19. Test a wide structure.
+20. Test a tall structure.
+21. Test vertical framing for structures.
+22. Test collision lateral translation.
+23. Test collision radius reduction.
+24. Test collision path shortening.
+25. Test inserted control points.
+26. Compare original and resolved path previews.
+27. Save a montage project.
+28. Close and reopen the replay.
+29. Load the project.
+30. Restore an autosave.
+31. Import a valid preset.
+32. Import a corrupted preset.
+33. Export a preset as text.
+34. Preview a full montage.
+35. Seek during montage preview.
+36. Edit a shot during preview.
+37. Exit preview and confirm editor state restoration.
+38. Test event timeline visualization.
+39. Test fallback overlay when native timeline support is unavailable.
+40. Export full debug JSON.
+41. Export redacted debug JSON.
+42. Inspect false-positive diagnostics.
+43. Close the replay during path generation.
+44. Close the replay during montage preview.
+45. Test Polish localization.
+46. Test previous CineWolf configuration migration.
+47. Test existing version 1.2 montage projects.
+48. Test all existing version 0.1 and 1.1 shots for regressions.
+
+# Part 18: Documentation
+
+Update:
+
+* `README.md`
+* `CHANGELOG.md`
+* `docs/ARCHITECTURE.md`
+* `docs/FLASHBACK_INTEGRATION.md`
+* `docs/MONTAGE_ANALYSIS.md`
+* `docs/MONTAGE_PLANNER.md`
+* `docs/VERTICAL_FORMATS.md`
+* `docs/MANUAL_TESTS.md`
+* `docs/ROADMAP.md`
+
+Create:
+
+* `docs/SHOT_GENERATORS_1_3.md`
+* `docs/TARGET_MODELS.md`
+* `docs/VISIBILITY_AND_FRAMING.md`
+* `docs/COLLISION_RESOLUTION.md`
+* `docs/MONTAGE_PROJECTS.md`
+* `docs/USER_PRESETS.md`
+* `docs/MONTAGE_PREVIEW.md`
+* `docs/TIMELINE_EVENT_VISUALIZATION.md`
+* `docs/DEBUG_EXPORT.md`
+* `docs/FALSE_POSITIVE_DIAGNOSTICS.md`
+* `docs/VEHICLE_PROFILES.md`
+
+Document:
+
+* New shot mathematics
+* Supported target types
+* Group framing
+* Structure framing
+* Vehicle framing
+* Visibility score
+* Collision candidate generation
+* Collision strategy scoring
+* Path shortening behavior
+* Control point insertion
+* Project file schema
+* Replay identity
+* Autosave behavior
+* Preset schema
+* Import security
+* Preview lifecycle
+* State restoration
+* Native timeline investigation
+* Debug JSON schema
+* False-positive hints
+* Optional mod integrations
+* Known limitations
+* Compatibility risks
+
+# Suggested package structure
+
+Adapt this structure to the existing project.
+
+```text
+pl.peterwolf.cinewolf.shot/
+  RevealShotGenerator.java
+  CraneUpShotGenerator.java
+  CraneDownShotGenerator.java
+  SpiralShotGenerator.java
+  StaticTrackingShotGenerator.java
+  SideTrackingShotGenerator.java
+  ChaseShotGenerator.java
+  CloseDetailShotGenerator.java
+  VehicleProfileShotGenerator.java
+
+pl.peterwolf.cinewolf.target/
+  CinematicTarget.java
+  EntityTarget.java
+  GroupTarget.java
+  StructureTarget.java
+  AreaTarget.java
+  VehicleTarget.java
+  DetailTarget.java
+  TargetGeometryResolver.java
+  TargetAnchorResolver.java
+
+pl.peterwolf.cinewolf.visibility/
+  TargetVisibilityAnalyzer.java
+  DefaultTargetVisibilityAnalyzer.java
+  VisibilityResult.java
+  VisibilitySample.java
+  FramingAnalyzer.java
+  FramingResult.java
+  FramingScore.java
+
+pl.peterwolf.cinewolf.collision/
+  CollisionResolver.java
+  CollisionCluster.java
+  CollisionCandidate.java
+  CollisionStrategy.java
+  LateralTranslationStrategy.java
+  RadiusAdjustmentStrategy.java
+  PathShorteningStrategy.java
+  ControlPointInsertionStrategy.java
+  CollisionStrategyScorer.java
+
+pl.peterwolf.cinewolf.path/
+  PathControlPoint.java
+  PathCurve.java
+  PathSegment.java
+  PathContinuityValidator.java
+
+pl.peterwolf.cinewolf.vehicle/
+  CineWolfVehicleProfileProvider.java
+  VehicleProfileRegistry.java
+  GenericVehicleProfileProvider.java
+  VehicleProfile.java
+  VehicleCameraAnchor.java
+  DetailAnchor.java
+
+pl.peterwolf.cinewolf.project/
+  MontageProjectManager.java
+  MontageProjectFile.java
+  MontageProjectAutosave.java
+  ReplayIdentityResolver.java
+  MontageProjectMigrator.java
+
+pl.peterwolf.cinewolf.preset.user/
+  UserPresetManager.java
+  UserMontagePresetFile.java
+  UserPresetValidator.java
+  UserPresetImporter.java
+  UserPresetExporter.java
+  UserPresetChecksum.java
+
+pl.peterwolf.cinewolf.montage.preview/
+  MontagePlaybackSession.java
+  DefaultMontagePlaybackSession.java
+  MontagePlaybackState.java
+  MontagePreviewCache.java
+  MontagePreviewStateRestorer.java
+
+pl.peterwolf.cinewolf.timeline/
+  CineWolfEventTimelineOverlay.java
+  FlashbackTimelineExtensionAdapter.java
+  TimelineEventMarker.java
+
+pl.peterwolf.cinewolf.debug/
+  CineWolfDebugExporter.java
+  CineWolfDebugExport.java
+  EventDiagnostic.java
+  FalsePositiveHint.java
+  DebugRedactionPolicy.java
+```
+
+Do not create duplicate abstractions when the project already contains equivalent types.
+
+# Acceptance criteria
+
+Version 1.3 is complete only when:
+
+* The project builds successfully.
+* All previous tests continue to pass.
+* Reveal works and validates visibility progression.
+* Crane Up works.
+* Crane Down works.
+* Spiral works.
+* Static Tracking works.
+* Side Tracking works.
+* Chase works.
+* Close Detail works.
+* Vehicle Profile works.
+* New shots are available in manual shot generation.
+* New shots are available to the montage planner.
+* Group targets can be framed.
+* Large structures can be framed.
+* Generic modded vehicles can be framed.
+* Provider-defined vehicle anchors are supported.
+* Visibility analysis evaluates occlusion and safe areas.
+* Group visible ratio is calculated.
+* Structure framing distance is calculated.
+* Vehicle lead space is applied.
+* Collision resolution supports lateral translation.
+* Collision resolution supports radius reduction.
+* Collision resolution supports path shortening.
+* Collision resolution supports inserted control points.
+* Collision strategies are scored and diagnosed.
+* Resolved paths remain smooth.
+* Montage projects can be saved and reopened.
+* Autosave recovery works.
+* User presets can be imported.
+* User presets can be exported.
+* Imported presets are schema validated.
+* Corrupted presets are rejected safely.
+* Built-in presets cannot be overwritten accidentally.
+* Montage preview remains non-destructive.
+* Editor state is restored after preview.
+* Preview supports seeking and shot navigation.
+* Native timeline event visualization is used only when a safe integration exists.
+* A custom CineWolf overlay remains available as fallback.
+* Debug JSON includes analysis, planning, visibility, and collision diagnostics.
+* Debug export supports redaction.
+* Weak and probable event detections are distinguishable.
+* False-positive hints are visible in debug mode.
+* Closing a replay clears preview, analysis, and collision resources.
+* English and Polish localization are complete.
+* Documentation reflects implemented behavior.
+* Automated tests pass.
+
+# Final response
+
+After implementation, provide:
+
+1. Implementation summary
+2. Existing architecture reused
+3. New shot generators
+4. New target models
+5. Visibility and framing implementation
+6. Collision strategy implementation
+7. Montage planner changes
+8. Vehicle provider architecture
+9. Project persistence implementation
+10. Preset import and export implementation
+11. Montage preview implementation
+12. Flashback timeline investigation result
+13. Debug and false-positive diagnostics
+14. Files created or modified
+15. Commands executed
+16. Build result
+17. Automated test result
+18. Manual testing instructions
+19. Known limitations
+20. Flashback compatibility risks
+21. Recommended scope for version 1.4 or 2.0
+
+Do not report a shot generator, collision strategy, project operation, preset operation, preview feature, or timeline integration as complete unless it is implemented and tested.
+
+Begin by inspecting the existing CineWolf AutoDirector repository and running the current build and test suite. Then implement the complete version 1.3 scope.
