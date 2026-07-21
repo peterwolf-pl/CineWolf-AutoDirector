@@ -1,0 +1,9 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "pl.peterwolf.cinewolf.mixin.flashback",
+  "compatibilityLevel": "JAVA_25",
+  "plugin": "pl.peterwolf.cinewolf.integration.flashback.FlashbackMixinPlugin",
+  "client": ["ReplayUIMixin", "ReplayServerAccessor", "ReplayGamePacketHandlerMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

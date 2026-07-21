@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "cinewolf_autodirector",
+  "version": "${version}",
+  "name": "CineWolf AutoDirector",
+  "description": "A virtual camera operator for Flashback replays.",
+  "authors": ["PeterWolf"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["pl.peterwolf.cinewolf.CineWolfAutoDirectorClient"]
+  },
+  "mixins": ["cinewolf_autodirector.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": ">=0.153.0",
+    "flashback": "*"
+  },
+  "custom": {
+    "cinewolf:supported_flashback": "${flashback_version}"
+  }
+}

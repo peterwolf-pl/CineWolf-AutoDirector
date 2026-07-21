@@ -1,0 +1,24 @@
+package pl.peterwolf.cinewolf.montage.event;
+
+public enum ReplayEventType {
+    POSITION_CHANGE,
+    HIGH_SPEED,
+    ACCELERATION,
+    DECELERATION,
+    SHARP_TURN,
+    ALTITUDE_GAIN,
+    ALTITUDE_LOSS,
+    COMBAT,
+    DAMAGE,
+    DEATH,
+    VEHICLE_ENTER,
+    VEHICLE_EXIT,
+    VEHICLE_MOVEMENT,
+    FLIGHT_START,
+    FLIGHT,
+    LANDING,
+    BLOCK_PLACEMENT,
+    BLOCK_DESTRUCTION,
+    PAUSE,
+    REPLAY_MARKER
+}
