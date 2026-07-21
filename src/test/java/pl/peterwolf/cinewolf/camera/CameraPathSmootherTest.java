@@ -103,6 +103,44 @@ class CameraPathSmootherTest {
     }
 
     @Test
+    void smallCommonModeReplayInterpolationPulseIsRemovedWithDefaultThresholds() {
+        List<CameraSample> samples = new ArrayList<>();
+        for (int index = 0; index < 21; index++) {
+            double time = index * 0.1;
+            double x = index * 0.08;
+            if (index > 0 && index < 20 && index % 5 == 0) x -= 0.20;
+            Vec3d lookAt = new Vec3d(x, 2.0, 8.0);
+            samples.add(sample(time, index * 2L, lookAt.add(new Vec3d(0.0, 2.0, -6.0)), lookAt));
+        }
+
+        List<CameraSample> result = smoother.smooth(samples, PathSmoothingSettings.defaults());
+
+        for (int index : List.of(5, 10, 15)) {
+            assertEquals(index * 0.08, result.get(index).lookAtPoint().x(), EPSILON);
+            assertEquals(index * 0.08, result.get(index).position().x(), EPSILON);
+            assertEquals(Math.sqrt(40.0), result.get(index).position()
+                    .distanceTo(result.get(index).lookAtPoint()), EPSILON);
+        }
+    }
+
+    @Test
+    void sustainedCommonModeDirectionReversalIsNotTreatedAsReplayJitter() {
+        double[] positions = {0.0, 0.5, 1.0, 1.5, 1.0, 0.5, 0.0};
+        List<CameraSample> samples = new ArrayList<>();
+        for (int index = 0; index < positions.length; index++) {
+            Vec3d lookAt = new Vec3d(positions[index], 2.0, 8.0);
+            samples.add(sample(index * 0.1, index * 2L,
+                    lookAt.add(new Vec3d(0.0, 2.0, -6.0)), lookAt));
+        }
+
+        List<CameraSample> result = smoother.smooth(samples,
+                settings(true, 0.0, 0.0, 0.3, true, 2.0, 24.0));
+
+        assertEquals(1.5, result.get(3).lookAtPoint().x(), EPSILON);
+        assertEquals(1.5, result.get(3).position().x(), EPSILON);
+    }
+
+    @Test
     void sustainedFastMovementIsNotRejectedAsAnOutlier() {
         List<CameraSample> samples = new ArrayList<>();
         for (int index = 0; index < 6; index++) {

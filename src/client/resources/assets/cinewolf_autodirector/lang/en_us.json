@@ -436,6 +436,7 @@
   "montage.reason.duplicated": "Shot was duplicated by the user.",
   "montage.transition.hard_cut": "Hard camera cut",
   "montage.warning.flashback_requires_chronological_source": "Flashback 0.41.1 requires monotonically increasing source time; non-chronological ordering was constrained.",
+  "montage.warning.output_shortened_to_source": "The requested %s s output exceeds the selected source at the configured replay speed; the montage was shortened to %s s.",
   "montage.warning.events_reused": "Only %s distinct suitable event(s) were available for %s shots; alternate angles were used.",
   "montage.warning.vertical_framing_risk": "Wide or horizontal motion may leave the configured 9:16 safe area.",
   "montage.warning.edited_source_not_monotonic": "Manual reordering made source time move backward. Reorder shots chronologically before generation.",

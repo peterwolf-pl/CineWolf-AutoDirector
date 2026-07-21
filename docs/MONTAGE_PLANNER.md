@@ -79,7 +79,7 @@ It rewards alternating wide/medium/close framing, elevation and direction change
 
 The planner validates output time and source replay time separately. Every mapping must have positive output duration, positive playback speed, and non-decreasing source replay ticks.
 
-Version 1.2.0 does not support reverse playback. Flashback 0.41.1 also lacks a stable true source edit-list abstraction for jumping between non-adjacent moments. CineWolf therefore selects one continuous source window, keeps adjacent mapping boundaries identical, and requires every assigned event peak to lie inside its shot.
+Version 1.2.0 does not support reverse playback. Flashback 0.41.1 also lacks a stable true source edit-list abstraction for jumping between non-adjacent moments. CineWolf therefore selects one continuous source window, keeps adjacent mapping boundaries identical, and requires every assigned event peak to lie inside its shot. If the requested output is longer than the selected range can supply at the configured minimum replay speed, the planner shortens the output to the available duration and reports the requested and fitted lengths instead of aborting after replay analysis.
 
 Speed changes obey:
 

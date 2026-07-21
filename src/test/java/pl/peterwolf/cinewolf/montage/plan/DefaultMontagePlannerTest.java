@@ -21,8 +21,10 @@ import pl.peterwolf.cinewolf.montage.event.ReplayEvent;
 import pl.peterwolf.cinewolf.montage.event.ReplayEventType;
 import pl.peterwolf.cinewolf.montage.event.ScoredReplayEvent;
 import pl.peterwolf.cinewolf.montage.preset.MontagePreset;
+import pl.peterwolf.cinewolf.montage.preset.MontagePacing;
 import pl.peterwolf.cinewolf.montage.preset.MontagePresetRegistry;
 import pl.peterwolf.cinewolf.montage.preset.MontagePresetType;
+import pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -245,6 +247,25 @@ class DefaultMontagePlannerTest {
         assertTrue(plan.shots().stream().flatMap(shot -> shot.planningReasons().stream()).anyMatch(reason ->
                 reason.startsWith("montage.reason.shot_fallback;requested=cinewolf.shot.")
                         && reason.contains(";chosen=cinewolf.shot.follow")));
+    }
+
+    @Test
+    void shortensOneTimesPlanToSelectedSourceRangeInsteadOfFailing() {
+        MontagePreset preset = preset(MontagePresetType.CINEMATIC_SHOWCASE);
+        MontageRequest request = new MontageRequest(preset, 195, 628, 25.0,
+                OutputAspectRatio.VERTICAL_9_16, MontagePacing.CINEMATIC,
+                Optional.of(TestFixtures.TARGET), true, 5.0, 15.0,
+                0.1, 0.1, false, false, 1.0, 1.0, 0.0, 16);
+
+        MontagePlan plan = new DefaultMontagePlanner().createPlan(analysis(), request,
+                new MontagePlanningContext(AVAILABLE, SamplingSettings.defaults()));
+
+        assertEquals(21.65, plan.outputDurationSeconds(), 1.0e-9);
+        assertEquals(21.65, plan.statistics().plannedOutputDurationSeconds(), 1.0e-9);
+        assertTrue(plan.warnings().stream().anyMatch(warning ->
+                warning.code().equals("montage.warning.output_shortened_to_source")
+                        && warning.arguments().equals(List.of("25.00", "21.65"))));
+        assertPlanValid(plan);
     }
 
     private static MontagePlan plan(MontagePresetType type) {

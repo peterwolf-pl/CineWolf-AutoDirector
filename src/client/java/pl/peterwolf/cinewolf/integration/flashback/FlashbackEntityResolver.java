@@ -1,8 +1,9 @@
 package pl.peterwolf.cinewolf.integration.flashback;
 
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.InterpolationHandler;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
@@ -18,22 +19,42 @@ import java.util.Optional;
 public final class FlashbackEntityResolver {
     public Optional<TargetPose> resolve(Entity entity, TargetReference reference) {
         if (entity == null || !entity.getUUID().equals(reference.uuid())) return Optional.empty();
-        Vec3 position = entity.position();
-        Vec3 focus = entity.getEyePosition();
+        Vec3 renderedPosition = entity.position();
+        Vec3 position = stableSamplePosition(entity, renderedPosition);
+        Vec3 interpolationOffset = position.subtract(renderedPosition);
+        Vec3 focus = entity.getEyePosition().add(interpolationOffset);
         AABB box = entity.getBoundingBox();
+        if (interpolationOffset.lengthSqr() > 0.0) {
+            box = box.move(interpolationOffset);
+        }
+        InterpolationHandler interpolation = entity.getInterpolation();
+        boolean interpolationActive = interpolation != null && interpolation.hasActiveInterpolation();
         String entityType = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
         return Optional.of(new TargetPose(
                 vector(position),
                 vector(focus),
                 new BoundingBox(new Vec3d(box.minX, box.minY, box.minZ), new Vec3d(box.maxX, box.maxY, box.maxZ)),
-                entity.getYRot(),
-                entity.getXRot(),
+                interpolationActive ? interpolation.yRot() : entity.getYRot(),
+                interpolationActive ? interpolation.xRot() : entity.getXRot(),
                 Vec3d.ZERO,
                 entityType,
                 entity.isPassenger(),
                 entity.level().dimension().identifier().toString(),
                 false
         ));
+    }
+
+    /**
+     * Replay seeking can leave a remote entity part-way through its three client interpolation steps. Sampling
+     * {@link Entity#position()} in that state bakes a periodic back-and-forth pulse into generated camera keys.
+     * The interpolation destination is the stable pose represented by the replay packets at the requested tick.
+     */
+    private static Vec3 stableSamplePosition(Entity entity, Vec3 fallback) {
+        InterpolationHandler interpolation = entity.getInterpolation();
+        if (interpolation == null || !interpolation.hasActiveInterpolation()) return fallback;
+        Vec3 target = interpolation.position();
+        return Double.isFinite(target.x) && Double.isFinite(target.y) && Double.isFinite(target.z)
+                ? target : fallback;
     }
 
     public Optional<ReplayEntitySnapshot> snapshot(Entity entity) {

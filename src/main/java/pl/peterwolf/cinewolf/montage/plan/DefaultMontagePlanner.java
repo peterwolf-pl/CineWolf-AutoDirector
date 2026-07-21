@@ -45,9 +45,10 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 || analysis.request().endReplayTime() < request.sourceEndReplayTime()) {
             throw new IllegalArgumentException("Montage request exceeds the analyzed replay range");
         }
+        List<MontageWarning> warnings = new ArrayList<>();
+        request = fitOutputDurationToSource(request, warnings);
         TargetReference target = selectTarget(analysis, request).orElseThrow(
                 () -> new IllegalArgumentException("No analyzed target is available for montage planning"));
-        List<MontageWarning> warnings = new ArrayList<>();
         if (!request.preferChronologicalOrder()) {
             warnings.add(MontageWarning.warning("montage.warning.flashback_requires_chronological_source"));
         }
@@ -121,6 +122,41 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         return new MontagePlan(montageId, request.preset(), request.sourceStartReplayTime(),
                 request.sourceEndReplayTime(), request.outputDurationSeconds(), shots, transitions, mappings,
                 statistics, warnings);
+    }
+
+    /**
+     * A chronological 1x montage cannot be longer than its selected source. The UI deliberately allows an
+     * arbitrary requested duration, so fit it to the source instead of spending the full analysis pass only to
+     * reject an otherwise usable plan. When speed changes are enabled, the configured minimum replay speed
+     * determines the longest output that the source can supply.
+     */
+    private static MontageRequest fitOutputDurationToSource(MontageRequest request,
+                                                             List<MontageWarning> warnings) {
+        long sourceTicks = request.sourceEndReplayTime() - request.sourceStartReplayTime();
+        double minimumSpeed = request.allowReplaySpeedChanges() ? request.minimumReplaySpeed() : 1.0;
+        long maximumOutputTicks = (long) Math.floor(sourceTicks / minimumSpeed + 1.0e-9);
+        long requestedOutputTicks = Math.max(1L, Math.round(request.outputDurationSeconds() * 20.0));
+        if (requestedOutputTicks <= maximumOutputTicks) return request;
+        if (maximumOutputTicks < 1L) {
+            throw new IllegalArgumentException(
+                    "Selected replay range is too short for the configured minimum replay speed");
+        }
+
+        double fittedOutputDuration = maximumOutputTicks / 20.0;
+        warnings.add(MontageWarning.warning("montage.warning.output_shortened_to_source",
+                seconds(request.outputDurationSeconds()), seconds(fittedOutputDuration)));
+        double fittedMinimumShotDuration = Math.min(request.minimumShotDuration(), fittedOutputDuration);
+        return new MontageRequest(request.preset(), request.sourceStartReplayTime(), request.sourceEndReplayTime(),
+                fittedOutputDuration, request.aspectRatio(), request.pacing(), request.mainTarget(),
+                request.automaticTargetDetection(), fittedMinimumShotDuration,
+                Math.max(fittedMinimumShotDuration, request.maximumShotDuration()),
+                request.cameraMovementIntensity(), request.cutFrequency(), request.allowReplaySpeedChanges(),
+                request.preferChronologicalOrder(), request.minimumReplaySpeed(), request.maximumReplaySpeed(),
+                request.maximumReplaySpeedChange(), request.maximumPlannedShots());
+    }
+
+    private static String seconds(double value) {
+        return String.format(java.util.Locale.ROOT, "%.2f", value);
     }
 
     private static Optional<TargetReference> selectTarget(ReplayAnalysisResult analysis, MontageRequest request) {

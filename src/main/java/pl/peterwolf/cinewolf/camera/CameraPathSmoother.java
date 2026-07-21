@@ -15,6 +15,12 @@ public final class CameraPathSmoother {
     private static final double TIME_EPSILON = 1.0e-9;
     private static final double REVERSAL_DOT_LIMIT = -0.25;
     private static final double MIN_DIRECTION_RESULTANT = 0.25;
+    private static final double MIN_COMMON_MODE_JITTER = 0.01;
+    private static final double MAX_COMMON_MODE_JITTER = 0.75;
+    private static final double COMMON_MODE_RESIDUAL_MISMATCH = 0.25;
+    private static final double ISOLATED_RESIDUAL_DOMINANCE = 1.5;
+    private static final double OUTER_TREND_ALIGNMENT = 0.25;
+    private static final double MAX_COMMON_MODE_SAMPLE_INTERVAL = 0.35;
     private final CameraLookAtSolver lookAtSolver = new CameraLookAtSolver();
 
     public List<CameraSample> smooth(List<CameraSample> samples, PathSmoothingSettings settings) {
@@ -63,18 +69,90 @@ public final class CameraPathSmoother {
             CameraSample next = samples.get(index + 1);
             if (!previous.isFinite() || !current.isFinite() || !next.isFinite()) continue;
 
-            Vec3d position = rejectVectorOutlier(previous.position(), current.position(), next.position(),
-                    previous.cinematicTimeSeconds(), current.cinematicTimeSeconds(), next.cinematicTimeSeconds(),
-                    distanceThreshold, speedThreshold);
-            Vec3d lookAt = rejectVectorOutlier(previous.lookAtPoint(), current.lookAtPoint(), next.lookAtPoint(),
-                    previous.cinematicTimeSeconds(), current.cinematicTimeSeconds(), next.cinematicTimeSeconds(),
-                    distanceThreshold, speedThreshold);
+            CommonModeCorrection commonMode = rejectCommonModeJitter(samples, segments, index);
+            Vec3d position = commonMode == null
+                    ? rejectVectorOutlier(previous.position(), current.position(), next.position(),
+                            previous.cinematicTimeSeconds(), current.cinematicTimeSeconds(), next.cinematicTimeSeconds(),
+                            distanceThreshold, speedThreshold)
+                    : commonMode.position();
+            Vec3d lookAt = commonMode == null
+                    ? rejectVectorOutlier(previous.lookAtPoint(), current.lookAtPoint(), next.lookAtPoint(),
+                            previous.cinematicTimeSeconds(), current.cinematicTimeSeconds(), next.cinematicTimeSeconds(),
+                            distanceThreshold, speedThreshold)
+                    : commonMode.lookAtPoint();
             if (position == current.position() && lookAt == current.lookAtPoint()) continue;
 
             result.set(index, rebuild(current, position, lookAt,
                     index == 0 ? Double.NaN : result.get(index - 1).yaw()));
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * Removes a small one-sample translation shared by the camera and its aim point. This is the fingerprint of
+     * a partially applied replay-entity interpolation step: the framing stays the same, but the whole view briefly
+     * moves backwards and immediately catches up. The wider outer-trend check keeps real sustained reversals.
+     */
+    private static CommonModeCorrection rejectCommonModeJitter(List<CameraSample> samples, SegmentMap segments,
+                                                                 int index) {
+        if (index < segments.start(index) + 2 || index > segments.end(index) - 2) return null;
+        CameraSample beforePrevious = samples.get(index - 2);
+        CameraSample previous = samples.get(index - 1);
+        CameraSample current = samples.get(index);
+        CameraSample next = samples.get(index + 1);
+        CameraSample afterNext = samples.get(index + 2);
+        if (!beforePrevious.isFinite() || !afterNext.isFinite()) return null;
+
+        double incomingTime = current.cinematicTimeSeconds() - previous.cinematicTimeSeconds();
+        double outgoingTime = next.cinematicTimeSeconds() - current.cinematicTimeSeconds();
+        double totalTime = next.cinematicTimeSeconds() - previous.cinematicTimeSeconds();
+        if (incomingTime <= TIME_EPSILON || outgoingTime <= TIME_EPSILON || totalTime <= TIME_EPSILON
+                || incomingTime > MAX_COMMON_MODE_SAMPLE_INTERVAL
+                || outgoingTime > MAX_COMMON_MODE_SAMPLE_INTERVAL) return null;
+
+        double amount = incomingTime / totalTime;
+        Vec3d expectedPosition = previous.position().lerp(next.position(), amount);
+        Vec3d expectedLookAt = previous.lookAtPoint().lerp(next.lookAtPoint(), amount);
+        Vec3d positionResidual = current.position().subtract(expectedPosition);
+        Vec3d lookAtResidual = current.lookAtPoint().subtract(expectedLookAt);
+        double positionError = positionResidual.length();
+        double lookAtError = lookAtResidual.length();
+        if (!microJitterMagnitude(positionError) || !microJitterMagnitude(lookAtError)) return null;
+
+        double largestError = Math.max(positionError, lookAtError);
+        double neighboringError = Math.max(interpolationResidual(beforePrevious, previous, current),
+                interpolationResidual(current, next, afterNext));
+        if (largestError < neighboringError * ISOLATED_RESIDUAL_DOMINANCE) return null;
+        if (positionResidual.subtract(lookAtResidual).length()
+                > Math.max(MIN_COMMON_MODE_JITTER, largestError * COMMON_MODE_RESIDUAL_MISMATCH)) return null;
+        if (positionResidual.normalizeOr(Vec3d.ZERO).dot(lookAtResidual.normalizeOr(Vec3d.ZERO)) < 0.9) return null;
+
+        Vec3d incoming = current.lookAtPoint().subtract(previous.lookAtPoint());
+        Vec3d outgoing = next.lookAtPoint().subtract(current.lookAtPoint());
+        if (incoming.normalizeOr(Vec3d.ZERO).dot(outgoing.normalizeOr(Vec3d.ZERO)) >= REVERSAL_DOT_LIMIT) return null;
+
+        Vec3d earlierTrend = previous.lookAtPoint().subtract(beforePrevious.lookAtPoint());
+        Vec3d laterTrend = afterNext.lookAtPoint().subtract(next.lookAtPoint());
+        if (!continuousOuterTrend(earlierTrend, laterTrend)) return null;
+        return new CommonModeCorrection(expectedPosition, expectedLookAt);
+    }
+
+    private static double interpolationResidual(CameraSample left, CameraSample center, CameraSample right) {
+        double interval = right.cinematicTimeSeconds() - left.cinematicTimeSeconds();
+        if (interval <= TIME_EPSILON) return Double.POSITIVE_INFINITY;
+        double amount = (center.cinematicTimeSeconds() - left.cinematicTimeSeconds()) / interval;
+        return center.lookAtPoint().distanceTo(left.lookAtPoint().lerp(right.lookAtPoint(), amount));
+    }
+
+    private static boolean microJitterMagnitude(double value) {
+        return value >= MIN_COMMON_MODE_JITTER && value <= MAX_COMMON_MODE_JITTER;
+    }
+
+    private static boolean continuousOuterTrend(Vec3d earlier, Vec3d later) {
+        boolean earlierStationary = earlier.lengthSquared() <= TIME_EPSILON;
+        boolean laterStationary = later.lengthSquared() <= TIME_EPSILON;
+        if (earlierStationary || laterStationary) return earlierStationary && laterStationary;
+        return earlier.normalizeOr(Vec3d.ZERO).dot(later.normalizeOr(Vec3d.ZERO)) >= OUTER_TREND_ALIGNMENT;
     }
 
     private SmoothedFrame smoothFrame(List<CameraSample> samples, SegmentMap segments, int index,
@@ -152,6 +230,9 @@ public final class CameraPathSmoother {
     }
 
     private record SmoothedFrame(Vec3d position, Vec3d lookAtPoint) {
+    }
+
+    private record CommonModeCorrection(Vec3d position, Vec3d lookAtPoint) {
     }
 
     /** Weighted local linear regression evaluated at the center time; unlike a sample average it preserves

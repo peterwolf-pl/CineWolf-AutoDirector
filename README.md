@@ -2,7 +2,7 @@
 
 CineWolf AutoDirector is a client-side Fabric extension for Flashback that turns replay activity into editable cinematic camera work. It can still generate one Orbit, Follow, Flyby, Dolly In, or Dolly Out shot, while version 1.2.0 adds deterministic local replay analysis and the **Generate Montage** workflow.
 
-Version 1.3.0 targets Minecraft Java Edition 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, and Flashback 0.41.1.
+Version 1.3.2 targets Minecraft Java Edition 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, and Flashback 0.41.1.
 
 ## Privacy and determinism
 
@@ -42,7 +42,7 @@ Built-ins live in a registry that can accept future user-defined presets. Templa
 1. Install Fabric Loader for Minecraft 26.2.
 2. Install Fabric API 0.153.0+26.2 or a compatible newer 26.2 build.
 3. Install Flashback 0.41.1.
-4. Put `cinewolf-autodirector-1.3.0.jar` in the client `mods` folder.
+4. Put `cinewolf-autodirector-1.3.2.jar` in the client `mods` folder.
 5. Open a replay in Flashback. The **CineWolf AutoDirector** window appears in the replay editor.
 
 Flashback is an external required dependency. CineWolf does not shade, bundle, copy, or modify it.
@@ -87,7 +87,7 @@ Preferences are stored in `config/cinewolf-autodirector.json`. Schema version 4 
 
 ## Known limitations
 
-- Flashback has no stable extension API. CineWolf 1.3.0 supports exactly Flashback 0.41.1 and disables its integration mixins on other versions.
+- Flashback has no stable extension API. CineWolf 1.3.2 supports exactly Flashback 0.41.1 and disables its integration mixins on other versions.
 - Arbitrary-time entity state is obtained by pausing and seeking the local replay, waiting until Flashback state is ready, copying immutable snapshots, and restoring the original state. Long ranges can take noticeable time.
 - Events are emitted only when direct packet/state evidence or conservative deterministic inference is available. Missing signals are warnings, not fabricated events; modded entity behavior can still produce false positives or false negatives.
 - Native camera/FOV/Timelapse tracks are source-bound. Version 1.2.0 uses one continuous chronological source window; non-adjacent source cuts, reverse playback, and moving the montage after the last unrelated camera key are rejected.

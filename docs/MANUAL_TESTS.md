@@ -1,6 +1,6 @@
 # Manual test checklist
 
-Use Minecraft 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, Flashback 0.41.1, and the current CineWolf 1.3.0 build. Keep a backup copy of any replay project used for destructive conflict tests.
+Use Minecraft 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, Flashback 0.41.1, and the current CineWolf 1.3.2 build. Keep a backup copy of any replay project used for destructive conflict tests.
 
 Record the replay name, selected tick range, preset, targets, settings, result, warnings, and any relevant log excerpt for each failure.
 
@@ -68,6 +68,7 @@ Record the replay name, selected tick range, preset, targets, settings, result, 
 31. - [ ] **Test camera-path smoothing controls.** In both Single Shot and Generate Montage, vary position strength, rotation strength, and smoothing window. Confirm endpoints and intended Orbit/Dolly framing remain stable while visible micro-jitter decreases.
 32. - [ ] **Test sudden-movement rejection.** Use a replay containing a one-sample target/camera glitch and a separate sustained fast Flyby. Confirm the isolated out-and-back pulse is removed while the sustained move and real turns remain.
 33. - [ ] **Test smoothing tooltips and invalidation.** Stop the cursor over each new setting and the main montage controls. Confirm a localized delayed tooltip appears and changing only smoothing clears generated paths without discarding completed replay analysis or the edited plan.
+34. - [ ] **Test output longer than a 1x source range.** Select replay ticks `195..628`, request `25.0 s`, disable replay-speed changes, and generate a Cinematic Showcase. Confirm analysis completes with a `21.65 s` plan and a localized shortening warning instead of `No continuous source layout...`.
 
 ## Legacy manual-shot regression
 
@@ -75,6 +76,7 @@ Record the replay name, selected tick range, preset, targets, settings, result, 
 - [ ] Confirm the selected Flashback In/Out range overrides manual Duration.
 - [ ] Confirm a duration-based shot clamps at replay end and displays the localized notice.
 - [ ] Confirm adaptive sampling remains bounded around turns, acceleration, elevation, and teleport discontinuities.
+- [ ] Track a moving remote player at 60 FPS and confirm the generated camera never moves backwards for one replay tick at the five-tick packet/interpolation cadence.
 - [ ] Confirm Smoothstep/Smootherstep warnings and baked linear keyframes remain correct.
 - [ ] Confirm Preview Path clears on parameter/target/timeline changes and stale previews cannot be written.
 - [ ] Confirm manual Add/Replace conflict behavior and **Undo Last CineWolf Shot** still preserve unrelated keys.

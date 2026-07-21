@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.2 - 2026-07-21
+
+- Fixed montage analysis failing when the requested output was longer than the selected continuous source at the configured replay speed.
+- Automatically fit the output duration to the maximum footage available from the selected source range while preserving chronological source time and replay-speed limits.
+- Added a localized plan warning that reports both the requested and fitted output durations.
+- Added a regression for the reported 195..628-tick source range with a 25-second, 1x Cinematic Showcase request.
+
+## 1.3.1 - 2026-07-21
+
+- Fixed periodic camera shake caused by sampling remote replay entities part-way through Minecraft's client interpolation steps.
+- Sampled the stable interpolation destination for position and rotation while keeping focus points and bounding boxes aligned with that pose.
+- Added low-amplitude common-mode pulse rejection for camera and aim paths, without flattening sustained direction reversals, discontinuities, collision anchors, or intentional shot motion.
+- Added regressions for subtle five-tick-style replay jitter and genuine target reversals.
+
 ## 1.3.0 - 2026-07-21
 
 - Added configurable zero-phase camera-path smoothing for both single shots and generated montages.

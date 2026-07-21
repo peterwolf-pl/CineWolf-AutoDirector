@@ -448,6 +448,7 @@
   "cinewolf.score.repetition_penalty": "Kara za powtórzenie zdarzenia -%s.",
   "cinewolf.score.technical_risk_penalty": "Kara za ryzyko techniczne -%s przy pewności %s.",
   "montage.warning.flashback_requires_chronological_source": "Flashback 0.41.1 wymaga rosnącego czasu źródłowego; kolejność niechronologiczna została ograniczona.",
+  "montage.warning.output_shortened_to_source": "Żądany wynik %s s przekracza zaznaczone źródło przy ustawionej prędkości; montaż skrócono do %s s.",
   "montage.warning.events_reused": "Dla %s ujęć dostępnych było tylko %s różnych odpowiednich zdarzeń; użyto alternatywnych kątów.",
   "montage.warning.vertical_framing_risk": "Szeroki kadr lub ruch poziomy może wyjść poza skonfigurowany bezpieczny obszar 9:16.",
   "montage.warning.edited_source_not_monotonic": "Ręczna zmiana kolejności cofnęła czas źródłowy. Przed generowaniem ustaw ujęcia chronologicznie.",
