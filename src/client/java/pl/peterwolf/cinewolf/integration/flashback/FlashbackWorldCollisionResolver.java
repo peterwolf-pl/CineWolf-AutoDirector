@@ -20,6 +20,8 @@ import java.util.List;
 public final class FlashbackWorldCollisionResolver implements CollisionResolver {
     private final CameraLookAtSolver lookAtSolver = new CameraLookAtSolver();
     private final CollisionPathContinuity pathContinuity = new CollisionPathContinuity();
+    private final pl.peterwolf.cinewolf.camera.CollisionStrategyResolver strategyResolver =
+            new pl.peterwolf.cinewolf.camera.CollisionStrategyResolver();
 
     @Override
     public CollisionResolutionResult resolve(CameraPathPlan originalPath, CollisionContext context,
@@ -38,17 +40,32 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
 
         double clearance = Math.max(0.05, Math.min(1.0, settings.minimumBlockDistance()));
         List<CameraSample> adjusted = new ArrayList<>(originalPath.samples().size());
+        List<pl.peterwolf.cinewolf.camera.CollisionStrategyCandidate> appliedStrategies = new ArrayList<>();
         int changed = 0;
         int unresolved = 0;
         String lastUnresolvedReason = "";
+        Vec3d previousAdjusted = null;
         for (CameraSample sample : originalPath.samples()) {
-            if (sample.discontinuity()) temporalState.reset();
+            if (sample.discontinuity()) {
+                temporalState.reset();
+                previousAdjusted = null;
+            }
             double deltaSeconds = Double.isFinite(temporalState.previousCinematicTime)
                     ? sample.cinematicTimeSeconds() - temporalState.previousCinematicTime : 0.0;
+            java.util.function.Predicate<Vec3d> safety =
+                    candidate -> isSafe(level, candidate, sample.lookAtPoint(), clearance);
             Vec3d position = pathContinuity.resolve(sample.position(), sample.lookAtPoint(), clearance,
-                    deltaSeconds, temporalState.positionState,
-                    candidate -> isSafe(level, candidate, sample.lookAtPoint(), clearance)).orElse(null);
+                    deltaSeconds, temporalState.positionState, safety).orElse(null);
             boolean resolvedSafely = position != null && temporalState.positionState.lastResolutionSafe();
+            if (!resolvedSafely) {
+                var strategy = strategyResolver.resolveSample(sample.position(), sample.lookAtPoint(),
+                        previousAdjusted, clearance, safety);
+                if (strategy.isPresent()) {
+                    position = strategy.get().position();
+                    appliedStrategies.add(strategy.get());
+                    resolvedSafely = safety.test(position);
+                }
+            }
             if (!resolvedSafely) {
                 lastUnresolvedReason = position == null ? "invalid_collision_input"
                         : temporalState.positionState.lastFailureReason();
@@ -65,9 +82,22 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                     orientation.quaternion(), orientation.yaw(), orientation.pitch(), orientation.roll(), sample.fov(),
                     sample.lookAtPoint(), sample.discontinuity() || orientation.degenerate(),
                     sample.collisionConstrained() || moved || !resolvedSafely));
+            previousAdjusted = position;
             temporalState.previousCinematicTime = sample.cinematicTimeSeconds();
             temporalState.previousYaw = orientation.yaw();
         }
+
+        List<CameraSample> withControls = strategyResolver.insertControlPoints(adjusted, candidate -> {
+            // Control-point insertion uses sample look-at from nearest original sample.
+            Vec3d focus = adjusted.isEmpty() ? candidate : adjusted.getFirst().lookAtPoint();
+            for (CameraSample sample : adjusted) {
+                if (Math.abs(sample.position().distanceTo(candidate)) < 8.0) {
+                    focus = sample.lookAtPoint();
+                    break;
+                }
+            }
+            return isSafe(level, candidate, focus, clearance);
+        }, lookAtSolver);
 
         List<PathWarning> warnings = new ArrayList<>(originalPath.warnings());
         if (changed > 0) {
@@ -79,9 +109,10 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                     "Collision avoidance used a continuity fallback for " + unresolved
                             + " camera samples (last reason: " + lastUnresolvedReason + ")", 0.0));
         }
-        CameraPathPlan path = new CameraPathPlan(originalPath.request(), adjusted, adjusted, warnings,
+        CameraPathPlan path = new CameraPathPlan(originalPath.request(), withControls, withControls, warnings,
                 originalPath.statistics());
-        return new CollisionResolutionResult(path, changed > 0, unresolved == 0
+        path = strategyResolver.annotate(path, appliedStrategies);
+        return new CollisionResolutionResult(path, changed > 0 || !appliedStrategies.isEmpty(), unresolved == 0
                 ? "Collision avoidance completed" : "Continuity fallback: " + lastUnresolvedReason);
     }
 

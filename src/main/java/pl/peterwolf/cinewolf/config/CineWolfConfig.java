@@ -68,11 +68,40 @@ public final class CineWolfConfig {
         rpm = 0.5;
         durationSeconds = 10.0;
         startAngleDegrees = 0.0;
-        direction = type == ShotType.FLYBY ? RotationDirection.LEFT_TO_RIGHT : RotationDirection.CLOCKWISE;
-        cameraSpeed = 4.0;
-        fov = 70.0;
+        direction = switch (type) {
+            case FLYBY, SIDE_TRACKING, REVEAL, VEHICLE_PROFILE -> RotationDirection.LEFT_TO_RIGHT;
+            default -> RotationDirection.CLOCKWISE;
+        };
+        cameraSpeed = type == ShotType.CHASE ? 6.0 : type == ShotType.STATIC_TRACKING ? 2.0 : 4.0;
+        fov = type == ShotType.CLOSE_DETAIL ? 45.0 : 70.0;
         easing = EasingType.SMOOTHERSTEP;
-        lookAheadSeconds = 0.2;
+        lookAheadSeconds = type == ShotType.CHASE ? 0.35 : 0.2;
+        if (type == ShotType.SPIRAL) {
+            diameter = 16.0;
+            startDistance = 10.0;
+            endDistance = 4.0;
+            rpm = 0.75;
+            height = 4.0;
+        } else if (type == ShotType.CRANE_UP || type == ShotType.CRANE_DOWN) {
+            distance = 10.0;
+            height = type == ShotType.CRANE_UP ? 8.0 : 2.5;
+            startDistance = type == ShotType.CRANE_UP ? 2.0 : 10.0;
+            endDistance = type == ShotType.CRANE_UP ? 10.0 : 2.0;
+        } else if (type == ShotType.CLOSE_DETAIL) {
+            distance = 1.8;
+            height = 1.2;
+        } else if (type == ShotType.CHASE) {
+            distance = 10.0;
+            height = 2.5;
+        } else if (type == ShotType.VEHICLE_PROFILE) {
+            distance = 12.0;
+            height = 2.0;
+        } else if (type == ShotType.REVEAL) {
+            startDistance = 14.0;
+            endDistance = 6.0;
+            distance = 10.0;
+            height = 3.0;
+        }
     }
 
     private static double positiveOr(double value, double fallback) {

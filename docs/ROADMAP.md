@@ -13,23 +13,26 @@ Version 1.2.0 introduces the deterministic local montage foundation:
 
 Known 1.2 constraints are deliberate: the native montage uses one continuous chronological source window because Flashback 0.41.1 cannot represent a stable source edit list; event markers live on a CineWolf mini-timeline rather than Flashback's native timeline; vertical output is composition metadata and a guide rather than a renderer/exporter.
 
-## Version 1.3
+## Version 1.3.5 — complete
 
-- Add Reveal, Crane Up/Down, Spiral, Static Tracking, Side Tracking, Chase, close-detail, and vehicle-profile generators.
-- Add stronger visibility/framing analysis for groups, large structures, and modded vehicles.
-- Improve collision strategies with lateral translation, radius reduction, path shortening, and inserted control points.
-- Add replay-specific montage project persistence and user-defined preset import/export after schema hardening.
-- Add richer non-destructive camera playback for montage preview.
-- Investigate safe native-timeline event visualization if Flashback exposes a supported extension surface.
-- Improve debug JSON export and false-positive diagnostics.
+Shipped in 1.3.5:
 
-## Version 2.0
+- Reveal, Crane Up/Down, Spiral, Static Tracking, Side Tracking, Chase, Close Detail, Vehicle Profile generators.
+- Visibility/framing analysis for groups, structures, and vehicles; soft vehicle providers.
+- Collision strategies: lateral translation, radius reduction, path shortening, inserted control points.
+- User preset import/export with schema validation and built-in protection.
+- Richer non-destructive montage playback (seek, shot navigation, state restore).
+- Flashback timeline investigation: native extension unavailable; custom overlay retained.
+- Debug export with weak/probable/strong event strength and false-positive hints.
+
+## Version 1.4 / 2.0
 
 - Implement a separate `ReplayModReplayEditorAdapter` under the reserved `integration.replaymod` package.
-- Add third-party camera/event/profile APIs.
+- Add third-party camera/event/profile APIs and first-class group/structure selection UI.
 - Add community preset libraries with explicit local import and validation.
-- Add group, structure, building-volume, and selected-area targets.
+- Deeper provider integrations (Minecart Chain Train, Planes, Zip-line, Blueprint Strings).
 - Revisit true source edit lists only when the replay backend can represent them safely and atomically.
+- Revisit native timeline glyphs only if Flashback publishes a stable extension surface.
 
 ## PeterWolf profile providers
 

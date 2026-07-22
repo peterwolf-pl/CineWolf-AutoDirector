@@ -1,6 +1,6 @@
 # Manual test checklist
 
-Use Minecraft 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, Flashback 0.41.1, and the current CineWolf 1.3.2 build. Keep a backup copy of any replay project used for destructive conflict tests.
+Use Minecraft 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, Flashback 0.41.1, and the current CineWolf **1.3.5** build. Keep a backup copy of any replay project used for destructive conflict tests.
 
 Record the replay name, selected tick range, preset, targets, settings, result, warnings, and any relevant log excerpt for each failure.
 
@@ -70,9 +70,23 @@ Record the replay name, selected tick range, preset, targets, settings, result, 
 33. - [ ] **Test smoothing tooltips and invalidation.** Stop the cursor over each new setting and the main montage controls. Confirm a localized delayed tooltip appears and changing only smoothing clears generated paths without discarding completed replay analysis or the edited plan.
 34. - [ ] **Test output longer than a 1x source range.** Select replay ticks `195..628`, request `25.0 s`, disable replay-speed changes, and generate a Cinematic Showcase. Confirm analysis completes with a `21.65 s` plan and a localized shortening warning instead of `No continuous source layout...`.
 
+## Version 1.3.5 acceptance — new generators and tooling
+
+35. - [ ] **Reveal.** Generate a Reveal on a subject near geometry; confirm the path progresses and reports `reveal.already_visible` when the start is already clear.
+36. - [ ] **Crane Up / Crane Down.** Confirm vertical lift and descent framing; crane down respects ground clearance.
+37. - [ ] **Spiral.** Confirm radius/height change across revolutions without entering the target volume.
+38. - [ ] **Static Tracking.** Confirm fixed world camera while the subject moves; rotation does not whip wildly on a close pass.
+39. - [ ] **Side Tracking / Chase.** Confirm parallel side track and speed-responsive chase distance on a fast vehicle/player.
+40. - [ ] **Close Detail / Vehicle Profile.** Confirm detail focus near the subject and minecart/boat/horse/generic vehicle framing.
+41. - [ ] **Montage planner uses new shots.** Analyze a mixed activity range and confirm proposed shots can include new types when preferred by the preset.
+42. - [ ] **User preset export/import.** Export a preset JSON, re-import under a new id, reject built-in id overwrite, and quarantine a corrupted file.
+43. - [ ] **Montage preview seek/navigation.** Preview a multi-shot plan, seek, next/previous shot, exit, and confirm editor state restores with no temporary native keys left behind.
+44. - [ ] **Debug diagnostics.** Export debug JSON and confirm event strength, false-positive hints, and redacted paths without raw sample arrays.
+45. - [ ] **Collision strategies.** Near walls, confirm adjusted samples and strategy diagnostics rather than alternating snapback.
+
 ## Legacy manual-shot regression
 
-- [ ] Generate Orbit, Follow, Flyby, Dolly In, and Dolly Out shots against moving targets.
+- [ ] Generate Orbit, Follow, Flyby, Dolly In, Dolly Out, and each 1.3.5 shot type against moving targets.
 - [ ] Confirm the selected Flashback In/Out range overrides manual Duration.
 - [ ] Confirm a duration-based shot clamps at replay end and displays the localized notice.
 - [ ] Confirm adaptive sampling remains bounded around turns, acceleration, elevation, and teleport discontinuities.

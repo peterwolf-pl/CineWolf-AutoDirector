@@ -17,6 +17,12 @@ import java.util.UUID;
 public final class MontagePreviewController {
     private static final int REQUIRED_STABLE_TICKS = 1;
     private final FlashbackReplayEditorAdapter adapter;
+    private final pl.peterwolf.cinewolf.montage.preview.DefaultMontagePlaybackSession session =
+            new pl.peterwolf.cinewolf.montage.preview.DefaultMontagePlaybackSession();
+    private final pl.peterwolf.cinewolf.montage.preview.MontagePreviewCache previewCache =
+            new pl.peterwolf.cinewolf.montage.preview.MontagePreviewCache();
+    private final pl.peterwolf.cinewolf.montage.preview.MontagePreviewStateRestorer stateRestorer =
+            new pl.peterwolf.cinewolf.montage.preview.MontagePreviewStateRestorer();
     private boolean active;
     private boolean playing;
     private boolean restoring;
@@ -45,9 +51,15 @@ public final class MontagePreviewController {
         }
         plan = montagePlan;
         paths = List.copyOf(generated);
+        previewCache.clear();
+        for (MontageGenerationController.GeneratedPath path : paths) {
+            previewCache.put(path.shot().shotId(), path.path());
+        }
+        session.enter(montagePlan);
         restoreTick = adapter.getCurrentReplayTime();
         restorePaused = adapter.replayPaused();
         restoreCamera = adapter.getCurrentCameraPose();
+        stateRestorer.capture(restoreTick, restorePaused, restoreCamera);
         adapter.setReplayPaused(true);
         outputSeconds = 0.0;
         requestedSourceTick = Long.MIN_VALUE;
@@ -103,12 +115,14 @@ public final class MontagePreviewController {
         if (!active || restoring) return;
         if (outputSeconds >= plan.outputDurationSeconds()) outputSeconds = 0.0;
         playing = true;
+        session.play();
         statusKey = "cinewolf.montage.preview.playing";
     }
 
     public void pause() {
         if (!active || restoring) return;
         playing = false;
+        session.pause();
         statusKey = "cinewolf.montage.preview.paused";
     }
 
@@ -116,8 +130,20 @@ public final class MontagePreviewController {
         if (!active || restoring) return;
         playing = false;
         outputSeconds = 0.0;
+        session.stop();
         requestedSourceTick = Long.MIN_VALUE;
         statusKey = "cinewolf.montage.preview.stopped";
+        seekForCurrentFrame();
+    }
+
+    /** Seek to absolute montage output time without writing native keyframes. */
+    public void seek(double seconds) {
+        if (!active || restoring || plan == null) return;
+        playing = false;
+        outputSeconds = Math.max(0.0, Math.min(plan.outputDurationSeconds(), seconds));
+        session.seek(outputSeconds);
+        requestedSourceTick = Long.MIN_VALUE;
+        statusKey = "cinewolf.montage.preview.paused";
         seekForCurrentFrame();
     }
 
@@ -248,8 +274,25 @@ public final class MontagePreviewController {
         restoring = false;
         plan = null;
         paths = List.of();
+        previewCache.clear();
+        session.exit();
+        stateRestorer.clear();
         requestedSourceTick = Long.MIN_VALUE;
         stableTicks = 0;
+    }
+
+    public pl.peterwolf.cinewolf.montage.preview.MontagePreviewCache previewCache() {
+        return previewCache;
+    }
+
+    public pl.peterwolf.cinewolf.montage.preview.MontagePlaybackState playbackState() {
+        if (restoring) return pl.peterwolf.cinewolf.montage.preview.MontagePlaybackState.RESTORING;
+        if (!active) return pl.peterwolf.cinewolf.montage.preview.MontagePlaybackState.IDLE;
+        if (playing) return pl.peterwolf.cinewolf.montage.preview.MontagePlaybackState.PLAYING;
+        if (plan != null && outputSeconds >= plan.outputDurationSeconds() - 1.0e-6) {
+            return pl.peterwolf.cinewolf.montage.preview.MontagePlaybackState.FINISHED;
+        }
+        return pl.peterwolf.cinewolf.montage.preview.MontagePlaybackState.PAUSED;
     }
 
     public boolean active() {

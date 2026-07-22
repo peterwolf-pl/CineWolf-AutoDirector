@@ -555,5 +555,21 @@
   "montage.timeline.keyframe_outside_output_interval": "A generated keyframe lies outside the montage output interval.",
   "montage.timeline.output_time_out_of_range": "A generated output time exceeds Flashback's supported range.",
   "montage.timeline.conflicts_preserved": "Existing keyframes were preserved while adding the montage.",
-  "montage.timeline.placed_after_last": "The montage was placed after the last relevant keyframe."
+  "montage.timeline.placed_after_last": "The montage was placed after the last relevant keyframe.",
+  "cinewolf.shot.reveal": "Reveal",
+  "cinewolf.shot.crane_up": "Crane Up",
+  "cinewolf.shot.crane_down": "Crane Down",
+  "cinewolf.shot.spiral": "Spiral",
+  "cinewolf.shot.static_tracking": "Static Tracking",
+  "cinewolf.shot.side_tracking": "Side Tracking",
+  "cinewolf.shot.chase": "Chase",
+  "cinewolf.shot.close_detail": "Close Detail",
+  "cinewolf.shot.vehicle_profile": "Vehicle Profile",
+  "cinewolf.timeline.native_unavailable": "Flashback has no stable native timeline extension API; CineWolf uses its custom event overlay.",
+  "cinewolf.montage.preview.shot_unavailable": "That montage shot is not available for preview.",
+  "cinewolf.shot.orbit": "Orbit",
+  "cinewolf.shot.follow": "Follow",
+  "cinewolf.shot.flyby": "Flyby",
+  "cinewolf.shot.dolly_in": "Dolly In",
+  "cinewolf.shot.dolly_out": "Dolly Out"
 }

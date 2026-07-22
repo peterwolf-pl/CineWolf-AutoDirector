@@ -594,13 +594,22 @@ public final class GenerateMontagePanel {
         boolean changed = false;
         changed |= number(tr("cinewolf.field.height") + "###height-" + shot.shotId(), values[0], 0.25,
                 -64, 256, tr("cinewolf.tooltip.height"), value -> values[0] = value);
-        if (request.shotType() == ShotType.FOLLOW || request.shotType() == ShotType.FLYBY) {
+        ShotType shotType = request.shotType();
+        if (shotType == ShotType.FOLLOW || shotType == ShotType.FLYBY || shotType == ShotType.CHASE
+                || shotType == ShotType.SIDE_TRACKING || shotType == ShotType.STATIC_TRACKING
+                || shotType == ShotType.CRANE_UP || shotType == ShotType.CRANE_DOWN
+                || shotType == ShotType.CLOSE_DETAIL || shotType == ShotType.VEHICLE_PROFILE
+                || shotType == ShotType.REVEAL) {
             changed |= number(tr("cinewolf.field.distance") + "###distance-" + shot.shotId(), values[1], 0.25,
                     0.25, 512, tr("cinewolf.tooltip.distance"), value -> values[1] = value);
+        }
+        if (shotType == ShotType.FOLLOW || shotType == ShotType.FLYBY || shotType == ShotType.CHASE
+                || shotType == ShotType.SIDE_TRACKING || shotType == ShotType.VEHICLE_PROFILE
+                || shotType == ShotType.STATIC_TRACKING) {
             changed |= number(tr("cinewolf.field.camera_speed") + "###speed-" + shot.shotId(), values[4], 0.25,
                     0.05, 128, tr("cinewolf.tooltip.camera_speed"), value -> values[4] = value);
         }
-        if (request.shotType() == ShotType.ORBIT) {
+        if (shotType == ShotType.ORBIT || shotType == ShotType.SPIRAL) {
             changed |= number(tr("cinewolf.field.diameter") + "###diameter-" + shot.shotId(), values[2], 0.25,
                     0.5, 512, tr("cinewolf.tooltip.diameter"), value -> values[2] = value);
             changed |= number(tr("cinewolf.field.rpm") + "###rpm-" + shot.shotId(), values[8], 0.05,
@@ -608,22 +617,24 @@ public final class GenerateMontagePanel {
             changed |= number(tr("cinewolf.field.start_angle") + "###angle-" + shot.shotId(), values[9], 5,
                     -3600, 3600, tr("cinewolf.tooltip.start_angle"), value -> values[9] = value);
         }
-        if (request.shotType() == ShotType.DOLLY_IN || request.shotType() == ShotType.DOLLY_OUT) {
+        if (shotType == ShotType.DOLLY_IN || shotType == ShotType.DOLLY_OUT || shotType == ShotType.REVEAL
+                || shotType == ShotType.SPIRAL || shotType == ShotType.CRANE_UP || shotType == ShotType.CRANE_DOWN) {
             changed |= number(tr("cinewolf.field.start_distance") + "###start-distance-" + shot.shotId(),
-                    values[6], 0.25, 1, 512, tr("cinewolf.tooltip.start_distance"),
+                    values[6], 0.25, 0.5, 512, tr("cinewolf.tooltip.start_distance"),
                     value -> values[6] = value);
             changed |= number(tr("cinewolf.field.end_distance") + "###end-distance-" + shot.shotId(),
-                    values[7], 0.25, 1, 512, tr("cinewolf.tooltip.end_distance"),
+                    values[7], 0.25, 0.5, 512, tr("cinewolf.tooltip.end_distance"),
                     value -> values[7] = value);
         }
         changed |= number(tr("cinewolf.field.fov") + "###fov-" + shot.shotId(), values[3], 1,
                 1, 110, tr("cinewolf.tooltip.fov"), value -> values[3] = value);
-        if (request.shotType() != ShotType.FLYBY) {
+        if (shotType != ShotType.FLYBY && shotType != ShotType.STATIC_TRACKING && shotType != ShotType.CLOSE_DETAIL) {
             changed |= number(tr("cinewolf.field.look_ahead") + "###look-" + shot.shotId(), values[5], 0.05,
                     0, 10, tr("cinewolf.tooltip.look_ahead"), value -> values[5] = value);
         }
 
-        RotationDirection[] directions = request.shotType() == ShotType.FLYBY
+        RotationDirection[] directions = (shotType == ShotType.FLYBY || shotType == ShotType.SIDE_TRACKING
+                || shotType == ShotType.REVEAL || shotType == ShotType.VEHICLE_PROFILE)
                 ? new RotationDirection[]{RotationDirection.LEFT_TO_RIGHT, RotationDirection.RIGHT_TO_LEFT}
                 : new RotationDirection[]{RotationDirection.CLOCKWISE, RotationDirection.COUNTERCLOCKWISE};
         int directionIndex = Math.max(0, Arrays.asList(directions).indexOf(direction[0]));
@@ -1119,9 +1130,11 @@ public final class GenerateMontagePanel {
 
     private static ShotRequest copyRequest(ShotRequest source, TargetReference target, ShotType type) {
         RotationDirection direction = source.direction();
-        if (type == ShotType.FLYBY && direction != RotationDirection.LEFT_TO_RIGHT
+        boolean lateral = type == ShotType.FLYBY || type == ShotType.SIDE_TRACKING
+                || type == ShotType.REVEAL || type == ShotType.VEHICLE_PROFILE;
+        if (lateral && direction != RotationDirection.LEFT_TO_RIGHT
                 && direction != RotationDirection.RIGHT_TO_LEFT) direction = RotationDirection.LEFT_TO_RIGHT;
-        if (type != ShotType.FLYBY && direction != RotationDirection.CLOCKWISE
+        if (!lateral && direction != RotationDirection.CLOCKWISE
                 && direction != RotationDirection.COUNTERCLOCKWISE) direction = RotationDirection.CLOCKWISE;
         return new ShotRequest(target, type, source.diameter(), source.height(), source.distance(),
                 source.startDistance(), source.endDistance(), source.rpm(), source.durationSeconds(),

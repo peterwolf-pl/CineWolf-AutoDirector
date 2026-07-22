@@ -555,5 +555,21 @@
   "montage.project.unsafe_file": "Ścieżka projektu montażu jest niebezpieczna.",
   "montage.project.unsafe_id": "Identyfikator projektu montażu jest nieprawidłowy.",
   "montage.project.quarantine_failed": "Nie udało się poddać uszkodzonego projektu kwarantannie.",
-  "montage.project.not_found": "Nie znaleziono żądanego lokalnego projektu montażu."
+  "montage.project.not_found": "Nie znaleziono żądanego lokalnego projektu montażu.",
+  "cinewolf.shot.reveal": "Odsłonięcie",
+  "cinewolf.shot.crane_up": "Żuraw w górę",
+  "cinewolf.shot.crane_down": "Żuraw w dół",
+  "cinewolf.shot.spiral": "Spirala",
+  "cinewolf.shot.static_tracking": "Statyczne śledzenie",
+  "cinewolf.shot.side_tracking": "Śledzenie z boku",
+  "cinewolf.shot.chase": "Pościg",
+  "cinewolf.shot.close_detail": "Zbliżenie detalu",
+  "cinewolf.shot.vehicle_profile": "Profil pojazdu",
+  "cinewolf.timeline.native_unavailable": "Flashback nie udostępnia stabilnego API osi czasu; CineWolf używa własnego nakładki zdarzeń.",
+  "cinewolf.montage.preview.shot_unavailable": "Ten ujęcie montażu nie jest dostępne w podglądzie.",
+  "cinewolf.shot.orbit": "Orbita",
+  "cinewolf.shot.follow": "Podążanie",
+  "cinewolf.shot.flyby": "Przelot",
+  "cinewolf.shot.dolly_in": "Najazd",
+  "cinewolf.shot.dolly_out": "Odjazd"
 }

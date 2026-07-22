@@ -568,26 +568,26 @@ public final class DefaultMontagePlanner implements MontagePlanner {
 
     private static Map<ReplayEventType, List<ShotType>> eventShotMap() {
         EnumMap<ReplayEventType, List<ShotType>> map = new EnumMap<>(ReplayEventType.class);
-        map.put(ReplayEventType.POSITION_CHANGE, List.of(ShotType.DOLLY_IN, ShotType.ORBIT));
-        map.put(ReplayEventType.HIGH_SPEED, List.of(ShotType.FOLLOW, ShotType.FLYBY));
-        map.put(ReplayEventType.ACCELERATION, List.of(ShotType.FOLLOW, ShotType.DOLLY_OUT));
-        map.put(ReplayEventType.DECELERATION, List.of(ShotType.DOLLY_OUT, ShotType.FOLLOW));
-        map.put(ReplayEventType.SHARP_TURN, List.of(ShotType.ORBIT, ShotType.FOLLOW));
-        map.put(ReplayEventType.ALTITUDE_GAIN, List.of(ShotType.FLYBY, ShotType.ORBIT));
-        map.put(ReplayEventType.ALTITUDE_LOSS, List.of(ShotType.FLYBY, ShotType.DOLLY_OUT));
-        map.put(ReplayEventType.COMBAT, List.of(ShotType.FOLLOW, ShotType.ORBIT, ShotType.FLYBY));
-        map.put(ReplayEventType.DAMAGE, List.of(ShotType.ORBIT, ShotType.FOLLOW));
-        map.put(ReplayEventType.DEATH, List.of(ShotType.DOLLY_OUT, ShotType.FOLLOW));
-        map.put(ReplayEventType.VEHICLE_ENTER, List.of(ShotType.DOLLY_IN, ShotType.FOLLOW));
-        map.put(ReplayEventType.VEHICLE_EXIT, List.of(ShotType.DOLLY_OUT, ShotType.ORBIT));
-        map.put(ReplayEventType.VEHICLE_MOVEMENT, List.of(ShotType.FOLLOW, ShotType.FLYBY));
-        map.put(ReplayEventType.FLIGHT_START, List.of(ShotType.FOLLOW, ShotType.DOLLY_OUT));
-        map.put(ReplayEventType.FLIGHT, List.of(ShotType.FOLLOW, ShotType.FLYBY, ShotType.ORBIT));
-        map.put(ReplayEventType.LANDING, List.of(ShotType.FLYBY, ShotType.DOLLY_OUT));
-        map.put(ReplayEventType.BLOCK_PLACEMENT, List.of(ShotType.ORBIT, ShotType.DOLLY_OUT));
-        map.put(ReplayEventType.BLOCK_DESTRUCTION, List.of(ShotType.ORBIT, ShotType.FLYBY));
-        map.put(ReplayEventType.PAUSE, List.of(ShotType.DOLLY_IN, ShotType.ORBIT));
-        map.put(ReplayEventType.REPLAY_MARKER, List.of(ShotType.DOLLY_IN, ShotType.ORBIT, ShotType.FLYBY));
+        map.put(ReplayEventType.POSITION_CHANGE, List.of(ShotType.DOLLY_IN, ShotType.REVEAL, ShotType.ORBIT));
+        map.put(ReplayEventType.HIGH_SPEED, List.of(ShotType.CHASE, ShotType.FOLLOW, ShotType.SIDE_TRACKING, ShotType.FLYBY));
+        map.put(ReplayEventType.ACCELERATION, List.of(ShotType.CHASE, ShotType.FOLLOW, ShotType.DOLLY_OUT));
+        map.put(ReplayEventType.DECELERATION, List.of(ShotType.DOLLY_OUT, ShotType.FOLLOW, ShotType.STATIC_TRACKING));
+        map.put(ReplayEventType.SHARP_TURN, List.of(ShotType.ORBIT, ShotType.SPIRAL, ShotType.SIDE_TRACKING, ShotType.FOLLOW));
+        map.put(ReplayEventType.ALTITUDE_GAIN, List.of(ShotType.CRANE_UP, ShotType.FLYBY, ShotType.SPIRAL, ShotType.ORBIT));
+        map.put(ReplayEventType.ALTITUDE_LOSS, List.of(ShotType.CRANE_DOWN, ShotType.FLYBY, ShotType.DOLLY_OUT));
+        map.put(ReplayEventType.COMBAT, List.of(ShotType.FOLLOW, ShotType.STATIC_TRACKING, ShotType.ORBIT, ShotType.FLYBY));
+        map.put(ReplayEventType.DAMAGE, List.of(ShotType.CLOSE_DETAIL, ShotType.ORBIT, ShotType.FOLLOW));
+        map.put(ReplayEventType.DEATH, List.of(ShotType.DOLLY_OUT, ShotType.CRANE_UP, ShotType.FOLLOW));
+        map.put(ReplayEventType.VEHICLE_ENTER, List.of(ShotType.VEHICLE_PROFILE, ShotType.DOLLY_IN, ShotType.FOLLOW));
+        map.put(ReplayEventType.VEHICLE_EXIT, List.of(ShotType.VEHICLE_PROFILE, ShotType.DOLLY_OUT, ShotType.ORBIT));
+        map.put(ReplayEventType.VEHICLE_MOVEMENT, List.of(ShotType.VEHICLE_PROFILE, ShotType.SIDE_TRACKING, ShotType.CHASE, ShotType.FOLLOW));
+        map.put(ReplayEventType.FLIGHT_START, List.of(ShotType.CRANE_UP, ShotType.CHASE, ShotType.FOLLOW, ShotType.DOLLY_OUT));
+        map.put(ReplayEventType.FLIGHT, List.of(ShotType.VEHICLE_PROFILE, ShotType.CHASE, ShotType.FOLLOW, ShotType.SPIRAL));
+        map.put(ReplayEventType.LANDING, List.of(ShotType.CRANE_DOWN, ShotType.FLYBY, ShotType.DOLLY_OUT));
+        map.put(ReplayEventType.BLOCK_PLACEMENT, List.of(ShotType.REVEAL, ShotType.ORBIT, ShotType.CRANE_UP, ShotType.DOLLY_OUT));
+        map.put(ReplayEventType.BLOCK_DESTRUCTION, List.of(ShotType.ORBIT, ShotType.CLOSE_DETAIL, ShotType.FLYBY));
+        map.put(ReplayEventType.PAUSE, List.of(ShotType.CLOSE_DETAIL, ShotType.DOLLY_IN, ShotType.STATIC_TRACKING, ShotType.ORBIT));
+        map.put(ReplayEventType.REPLAY_MARKER, List.of(ShotType.REVEAL, ShotType.DOLLY_IN, ShotType.ORBIT, ShotType.FLYBY));
         return Map.copyOf(map);
     }
 

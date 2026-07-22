@@ -31,17 +31,22 @@ Client-only Flashback classes must never leak into records used by the analysis 
 
 `ShotRequest` describes one target, one registered shot type, its camera parameters, easing, output duration, and source replay interval. A `ReplayContext` supplies a `TargetPoseResolver`, bounded sampling settings, and optional adaptive ticks.
 
-`CameraPathPlanner` resolves the request through `ShotGeneratorRegistry`. Version 1.2.0 retains the five existing generators:
+`CameraPathPlanner` resolves the request through `ShotGeneratorRegistry`. Version **1.3.5** registers fourteen generators:
 
-- Orbit
-- Follow
-- Flyby
-- Dolly In
-- Dolly Out
+- Orbit, Follow, Flyby, Dolly In, Dolly Out
+- Reveal, Crane Up, Crane Down, Spiral
+- Static Tracking, Side Tracking, Chase
+- Close Detail, Vehicle Profile
+
+`ShotRequest` may carry optional `ShotOptions` for generator-specific controls (reveal direction, tracking side, detail anchors, vehicle profile style, FOV endpoints, maintain-target-size, etc.) without breaking older call sites.
 
 Every generator validates finite parameters and target availability, creates raw `CameraSample` values, bakes look-at rotation, and produces a `CameraPathPlan`. `CameraPathPlanner` then applies the shared pre-collision `CameraPathSmoother`. The centered time-window filter operates independently inside discontinuity-bounded segments, smooths look-at motion and target-relative camera offset, and recalculates finite orientation. Isolated-pulse rejection requires a large local residual, high speed on both sides, and a direction reversal, so it does not impose a global speed cap on legitimate Flyby shots. `CameraPathSimplifier` then applies positional Ramer–Douglas–Peucker reduction and preserves samples required by rotation error, FOV error, discontinuities, collision constraints, and maximum keyframe spacing.
 
-The registry exposes `supports` and an immutable `supportedTypes` snapshot. Montage planning must select and fall back only inside this set; names of future shot concepts are not treated as implemented generators.
+The Flashback collision pass uses `CollisionPathContinuity` plus `CollisionStrategyResolver` (lateral translation, orbit radius reduction, path shortening, inserted control points) with scored diagnostics. Core geometry/visibility lives under `visibility/` and remains Flashback-free.
+
+Expanded `CinematicTarget` types (entity/group/structure/area/vehicle/detail) and soft `VehicleProvider` hooks describe framing intent; runtime sampling still resolves through `TargetReference` + `TargetPoseResolver`.
+
+The registry exposes `supports` and an immutable `supportedTypes` snapshot. Montage planning must select and fall back only inside this set.
 
 ## Replay sampling boundary
 

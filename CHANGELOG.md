@@ -1,6 +1,20 @@
 # Changelog
 
+## 1.3.5 - 2026-07-22
+
+- Added nine shot generators: Reveal, Crane Up, Crane Down, Spiral, Static Tracking, Side Tracking, Chase, Close Detail, and Vehicle Profile.
+- Expanded cinematic targets with group, structure, area, vehicle, and detail models plus provider-based vehicle anchors.
+- Added reusable target visibility analysis, stronger framing validation, group visible ratio, structure framing distance, and vehicle lead-space scoring.
+- Strengthened collision avoidance with scored strategies: lateral translation, orbit radius reduction, path shortening, and inserted control points.
+- Extended montage planner and built-in presets to use the full generator library.
+- Added user montage preset import/export with schema validation, checksums, quarantine of corrupt files, and protection against overwriting built-ins.
+- Improved non-destructive montage playback (seek, shot navigation, preview cache, state restorer) without writing temporary native keyframes.
+- Investigated Flashback 0.41.1 native timeline extension: unavailable; custom CineWolf event overlay remains the supported surface.
+- Extended debug export with event strength (weak/probable/strong), false-positive hints, visibility/collision diagnostics, and path redaction.
+- Registered all new shots in manual UI and localization (English/Polish).
+
 ## 1.3.2 - 2026-07-21
+
 
 - Fixed montage analysis failing when the requested output was longer than the selected continuous source at the configured replay speed.
 - Automatically fit the output duration to the maximum footage available from the selected source range while preserving chronological source time and replay-speed limits.

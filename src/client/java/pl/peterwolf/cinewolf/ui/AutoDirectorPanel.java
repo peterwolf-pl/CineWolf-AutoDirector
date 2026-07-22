@@ -143,7 +143,8 @@ public final class AutoDirectorPanel {
 
     private void renderShotFields() {
         boolean changed = false;
-        if (config.shotType == ShotType.ORBIT) {
+        ShotType type = config.shotType;
+        if (type == ShotType.ORBIT || type == ShotType.SPIRAL) {
             changed |= number(tr("cinewolf.field.diameter"), config.diameter, 0.5, 0.1, 256.0,
                     tr("cinewolf.tooltip.diameter"), value -> config.diameter = value);
         }
@@ -151,28 +152,36 @@ public final class AutoDirectorPanel {
         changed |= number(tr("cinewolf.field.height"), config.height, 0.25, -64.0, 256.0,
                 tr("cinewolf.tooltip.height"), value -> config.height = value);
 
-        if (config.shotType == ShotType.FOLLOW || config.shotType == ShotType.FLYBY) {
+        if (type == ShotType.FOLLOW || type == ShotType.FLYBY || type == ShotType.CHASE
+                || type == ShotType.SIDE_TRACKING || type == ShotType.STATIC_TRACKING
+                || type == ShotType.CRANE_UP || type == ShotType.CRANE_DOWN
+                || type == ShotType.CLOSE_DETAIL || type == ShotType.VEHICLE_PROFILE
+                || type == ShotType.REVEAL) {
             changed |= number(tr("cinewolf.field.distance"), config.distance, 0.5, 0.25, 512.0,
                     tr("cinewolf.tooltip.distance"), value -> config.distance = value);
         }
-        if (config.shotType == ShotType.DOLLY_IN || config.shotType == ShotType.DOLLY_OUT) {
-            changed |= number(tr("cinewolf.field.start_distance"), config.startDistance, 0.5, 1.0, 512.0,
+        if (type == ShotType.DOLLY_IN || type == ShotType.DOLLY_OUT || type == ShotType.REVEAL
+                || type == ShotType.SPIRAL || type == ShotType.CRANE_UP || type == ShotType.CRANE_DOWN) {
+            changed |= number(tr("cinewolf.field.start_distance"), config.startDistance, 0.5, 0.5, 512.0,
                     tr("cinewolf.tooltip.start_distance"), value -> config.startDistance = value);
-            changed |= number(tr("cinewolf.field.end_distance"), config.endDistance, 0.5, 1.0, 512.0,
+            changed |= number(tr("cinewolf.field.end_distance"), config.endDistance, 0.5, 0.5, 512.0,
                     tr("cinewolf.tooltip.end_distance"), value -> config.endDistance = value);
         }
-        if (config.shotType == ShotType.ORBIT) {
+        if (type == ShotType.ORBIT || type == ShotType.SPIRAL) {
             changed |= number(tr("cinewolf.field.rpm"), config.rpm, 0.05, 0.0, 60.0,
                     tr("cinewolf.tooltip.rpm"), value -> config.rpm = value);
             changed |= number(tr("cinewolf.field.start_angle"), config.startAngleDegrees, 5.0, -3600.0, 3600.0,
                     tr("cinewolf.tooltip.start_angle"), value -> config.startAngleDegrees = value);
             changed |= directionCombo(new RotationDirection[]{RotationDirection.CLOCKWISE, RotationDirection.COUNTERCLOCKWISE});
             ImGui.textDisabled(tr("cinewolf.stats.revolutions", format(config.rpm * effectiveDurationSeconds() / 60.0)));
-        } else if (config.shotType == ShotType.FLYBY) {
+        } else if (type == ShotType.FLYBY || type == ShotType.SIDE_TRACKING || type == ShotType.REVEAL
+                || type == ShotType.VEHICLE_PROFILE) {
             changed |= directionCombo(new RotationDirection[]{RotationDirection.LEFT_TO_RIGHT, RotationDirection.RIGHT_TO_LEFT});
         }
 
-        if (config.shotType == ShotType.FOLLOW || config.shotType == ShotType.FLYBY) {
+        if (type == ShotType.FOLLOW || type == ShotType.FLYBY || type == ShotType.CHASE
+                || type == ShotType.SIDE_TRACKING || type == ShotType.VEHICLE_PROFILE
+                || type == ShotType.STATIC_TRACKING) {
             changed |= number(tr("cinewolf.field.camera_speed"), config.cameraSpeed, 0.25, 0.05, 128.0,
                     tr("cinewolf.tooltip.camera_speed"), value -> config.cameraSpeed = value);
         }
@@ -193,8 +202,7 @@ public final class AutoDirectorPanel {
                 tr("cinewolf.tooltip.fov"), value -> config.fov = value);
         changed |= easingCombo();
 
-        if (config.shotType == ShotType.ORBIT || config.shotType == ShotType.FOLLOW
-                || config.shotType == ShotType.DOLLY_IN || config.shotType == ShotType.DOLLY_OUT) {
+        if (type != ShotType.STATIC_TRACKING && type != ShotType.CLOSE_DETAIL) {
             changed |= number(tr("cinewolf.field.look_ahead"), config.lookAheadSeconds, 0.05, 0.0, 10.0,
                     tr("cinewolf.tooltip.look_ahead"), value -> config.lookAheadSeconds = value);
         }
@@ -410,10 +418,13 @@ public final class AutoDirectorPanel {
         long end = interval.endTick();
         double duration = interval.durationSeconds();
         RotationDirection direction = config.direction;
-        if (config.shotType == ShotType.ORBIT && direction != RotationDirection.CLOCKWISE
-                && direction != RotationDirection.COUNTERCLOCKWISE) direction = RotationDirection.CLOCKWISE;
-        if (config.shotType == ShotType.FLYBY && direction != RotationDirection.LEFT_TO_RIGHT
+        boolean lateral = config.shotType == ShotType.FLYBY || config.shotType == ShotType.SIDE_TRACKING
+                || config.shotType == ShotType.REVEAL || config.shotType == ShotType.VEHICLE_PROFILE;
+        if (lateral && direction != RotationDirection.LEFT_TO_RIGHT
                 && direction != RotationDirection.RIGHT_TO_LEFT) direction = RotationDirection.LEFT_TO_RIGHT;
+        if (!lateral && (config.shotType == ShotType.ORBIT || config.shotType == ShotType.SPIRAL)
+                && direction != RotationDirection.CLOCKWISE
+                && direction != RotationDirection.COUNTERCLOCKWISE) direction = RotationDirection.CLOCKWISE;
         return new ShotRequest(target == null ? new TargetReference(new java.util.UUID(0L, 0L), "unknown", "none") : target,
                 config.shotType, config.diameter, config.height, config.distance, config.startDistance, config.endDistance,
                 config.rpm, duration, config.startAngleDegrees, direction, config.cameraSpeed, config.fov, config.easing,
