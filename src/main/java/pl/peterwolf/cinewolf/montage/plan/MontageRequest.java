@@ -1,5 +1,6 @@
 package pl.peterwolf.cinewolf.montage.plan;
 
+import pl.peterwolf.cinewolf.config.MontageShotSettings.MontageShotPreferences;
 import pl.peterwolf.cinewolf.model.TargetReference;
 import pl.peterwolf.cinewolf.montage.preset.MontagePacing;
 import pl.peterwolf.cinewolf.montage.preset.MontagePreset;
@@ -26,7 +27,8 @@ public record MontageRequest(
         double minimumReplaySpeed,
         double maximumReplaySpeed,
         double maximumReplaySpeedChange,
-        int maximumPlannedShots
+        int maximumPlannedShots,
+        MontageShotPreferences shotPreferences
 ) {
     public MontageRequest {
         Objects.requireNonNull(preset, "preset");
@@ -56,6 +58,35 @@ public record MontageRequest(
             throw new IllegalArgumentException("Invalid maximum replay speed change");
         }
         maximumPlannedShots = Math.max(1, maximumPlannedShots);
+        shotPreferences = Objects.requireNonNullElse(shotPreferences, MontageShotPreferences.defaults());
+    }
+
+    /** Compatibility constructor without explicit shot preferences. */
+    public MontageRequest(
+            MontagePreset preset,
+            long sourceStartReplayTime,
+            long sourceEndReplayTime,
+            double outputDurationSeconds,
+            OutputAspectRatio aspectRatio,
+            MontagePacing pacing,
+            Optional<TargetReference> mainTarget,
+            boolean automaticTargetDetection,
+            double minimumShotDuration,
+            double maximumShotDuration,
+            double cameraMovementIntensity,
+            double cutFrequency,
+            boolean allowReplaySpeedChanges,
+            boolean preferChronologicalOrder,
+            double minimumReplaySpeed,
+            double maximumReplaySpeed,
+            double maximumReplaySpeedChange,
+            int maximumPlannedShots
+    ) {
+        this(preset, sourceStartReplayTime, sourceEndReplayTime, outputDurationSeconds, aspectRatio, pacing,
+                mainTarget, automaticTargetDetection, minimumShotDuration, maximumShotDuration,
+                cameraMovementIntensity, cutFrequency, allowReplaySpeedChanges, preferChronologicalOrder,
+                minimumReplaySpeed, maximumReplaySpeed, maximumReplaySpeedChange, maximumPlannedShots,
+                MontageShotPreferences.defaults());
     }
 
     public static MontageRequest fromPreset(MontagePreset preset, long sourceStart, long sourceEnd,
@@ -65,7 +96,8 @@ public record MontageRequest(
                 preset.maximumShotDuration(), preset.style().cameraMovementIntensity(), preset.style().cutFrequency(),
                 preset.style().allowReplaySpeedChanges(), preset.style().preferChronologicalOrder(),
                 preset.style().minimumReplaySpeed(), preset.style().maximumReplaySpeed(),
-                preset.style().maximumReplaySpeedChange(), preset.maximumShotCount());
+                preset.style().maximumReplaySpeedChange(), preset.maximumShotCount(),
+                MontageShotPreferences.defaults());
     }
 
     private static double clamp01(double value) {

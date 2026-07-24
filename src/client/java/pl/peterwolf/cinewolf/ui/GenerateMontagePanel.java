@@ -220,6 +220,9 @@ public final class GenerateMontagePanel {
         if (!expanded) return;
         MontageConfig settings = config.montage;
         boolean changed = false;
+
+        changed |= renderShotPreferences(settings);
+
         changed |= toggle("cinewolf.montage.field.include_markers", settings.includeReplayMarkers,
                 "cinewolf.montage.tooltip.include_markers",
                 value -> settings.includeReplayMarkers = value);
@@ -272,6 +275,60 @@ public final class GenerateMontagePanel {
         ImGui.sameLine();
         if (ImGui.button(tr("cinewolf.montage.action.export_debug"))) saveProject(true);
         tooltip(tr("cinewolf.montage.tooltip.export_debug"));
+    }
+
+    private boolean renderShotPreferences(MontageConfig settings) {
+        boolean expanded = ImGui.collapsingHeader(tr("cinewolf.montage.section.shot_preferences"));
+        tooltip(tr("cinewolf.montage.tooltip.shot_preferences"));
+        if (!expanded) return false;
+        settings.shotSettings.normalize();
+        boolean changed = false;
+
+        ImGui.textWrapped(tr("cinewolf.montage.shot_preferences.help"));
+        if (ImGui.button(tr("cinewolf.montage.action.enable_all_shots"))) {
+            settings.shotSettings.enableAll();
+            changed = true;
+        }
+        tooltip(tr("cinewolf.montage.tooltip.enable_all_shots"));
+
+        int columns = 2;
+        ImGui.columns(columns, "cinewolf-montage-shot-types", false);
+        for (ShotType type : ShotType.values()) {
+            boolean enabled = settings.shotSettings.isEnabled(type);
+            String label = tr("cinewolf.shot." + type.name().toLowerCase(Locale.ROOT))
+                    + "###shot-enable-" + type.name();
+            if (ImGui.checkbox(label, enabled)) {
+                settings.shotSettings.setEnabled(type, !enabled);
+                changed = true;
+            }
+            tooltip(tr("cinewolf.montage.tooltip.shot_type_toggle"));
+            ImGui.nextColumn();
+        }
+        ImGui.columns(1);
+
+        ImGui.separatorText(tr("cinewolf.montage.section.shot_geometry"));
+        changed |= number(tr("cinewolf.montage.field.min_distance"), settings.shotSettings.minimumDistance,
+                0.25, 0.5, 128.0, tr("cinewolf.montage.tooltip.min_distance"),
+                value -> settings.shotSettings.minimumDistance = value);
+        changed |= number(tr("cinewolf.montage.field.max_distance"), settings.shotSettings.maximumDistance,
+                0.25, settings.shotSettings.minimumDistance, 256.0, tr("cinewolf.montage.tooltip.max_distance"),
+                value -> settings.shotSettings.maximumDistance = value);
+        changed |= number(tr("cinewolf.montage.field.min_height"), settings.shotSettings.minimumHeight,
+                0.25, -16.0, 64.0, tr("cinewolf.montage.tooltip.min_height"),
+                value -> settings.shotSettings.minimumHeight = value);
+        changed |= number(tr("cinewolf.montage.field.max_height"), settings.shotSettings.maximumHeight,
+                0.25, settings.shotSettings.minimumHeight, 128.0, tr("cinewolf.montage.tooltip.max_height"),
+                value -> settings.shotSettings.maximumHeight = value);
+        changed |= number(tr("cinewolf.montage.field.min_orbit"), settings.shotSettings.minimumOrbitDiameter,
+                0.5, 1.0, 160.0, tr("cinewolf.montage.tooltip.min_orbit"),
+                value -> settings.shotSettings.minimumOrbitDiameter = value);
+        changed |= number(tr("cinewolf.montage.field.max_orbit"), settings.shotSettings.maximumOrbitDiameter,
+                0.5, settings.shotSettings.minimumOrbitDiameter, 320.0, tr("cinewolf.montage.tooltip.max_orbit"),
+                value -> settings.shotSettings.maximumOrbitDiameter = value);
+        changed |= number(tr("cinewolf.montage.field.look_ahead"), settings.shotSettings.lookAheadSeconds,
+                0.05, 0.0, 3.0, tr("cinewolf.montage.tooltip.look_ahead"),
+                value -> settings.shotSettings.lookAheadSeconds = value);
+        return changed;
     }
 
     private void renderPathSmoothingFields() {

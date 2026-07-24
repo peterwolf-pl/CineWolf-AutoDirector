@@ -138,7 +138,8 @@ public final class PreviewController implements AutoCloseable {
             return;
         }
         job.arrivalWait++;
-        if (job.arrivalWait < 2) return;
+        // Wait a few client ticks after seek so remote-entity interpolation settles before sampling.
+        if (job.arrivalWait < 3) return;
         job.arrivalWait = 0;
 
         TargetPose pose = adapter.resolveEntity(job.request.target(), tick).orElse(null);

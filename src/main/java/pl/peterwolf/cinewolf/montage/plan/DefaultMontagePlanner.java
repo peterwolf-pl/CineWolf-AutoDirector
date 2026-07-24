@@ -152,7 +152,7 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 Math.max(fittedMinimumShotDuration, request.maximumShotDuration()),
                 request.cameraMovementIntensity(), request.cutFrequency(), request.allowReplaySpeedChanges(),
                 request.preferChronologicalOrder(), request.minimumReplaySpeed(), request.maximumReplaySpeed(),
-                request.maximumReplaySpeedChange(), request.maximumPlannedShots());
+                request.maximumReplaySpeedChange(), request.maximumPlannedShots(), request.shotPreferences());
     }
 
     private static String seconds(double value) {
@@ -514,13 +514,19 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 : index == count - 1 ? request.preset().outroTemplate().preferredShotTypes()
                 : EVENT_SHOTS.getOrDefault(event, List.of(ShotType.FOLLOW, ShotType.ORBIT));
         ShotType firstRequested = requested.getFirst();
+        Set<ShotType> allowed = new java.util.HashSet<>(context.availableShotTypes());
+        allowed.retainAll(request.shotPreferences().allowedShotTypes());
+        if (allowed.isEmpty()) allowed = new java.util.HashSet<>(context.availableShotTypes());
         List<ShotType> candidates = new ArrayList<>();
-        requested.stream().filter(context.availableShotTypes()::contains).forEach(candidates::add);
+        requested.stream().filter(allowed::contains).forEach(candidates::add);
         request.preset().preferredShotTypes().stream().sorted(Comparator.comparing(Enum::ordinal))
-                .filter(context.availableShotTypes()::contains).filter(type -> !candidates.contains(type))
+                .filter(allowed::contains).filter(type -> !candidates.contains(type))
                 .forEach(candidates::add);
-        context.availableShotTypes().stream().sorted(Comparator.comparing(Enum::ordinal))
+        allowed.stream().sorted(Comparator.comparing(Enum::ordinal))
                 .filter(type -> !candidates.contains(type)).forEach(candidates::add);
+        if (candidates.isEmpty()) {
+            candidates.addAll(context.availableShotTypes());
+        }
         ShotType selected = candidates.stream().filter(type -> type != previous).findFirst()
                 .orElse(candidates.getFirst());
         return new ShotTypeSelection(firstRequested, selected, selected != firstRequested);

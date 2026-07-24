@@ -1,5 +1,6 @@
 package pl.peterwolf.cinewolf.montage.plan;
 
+import pl.peterwolf.cinewolf.config.MontageShotSettings.MontageShotPreferences;
 import pl.peterwolf.cinewolf.model.BoundingBox;
 import pl.peterwolf.cinewolf.model.EasingType;
 import pl.peterwolf.cinewolf.model.RotationDirection;
@@ -23,6 +24,7 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
                                          double outputDurationSeconds, double movementIntensity,
                                          int shotIndex, ReplayAnalysisResult analysis, MontageRequest request,
                                          MontagePlanningContext context) {
+        MontageShotPreferences prefs = request.shotPreferences();
         double size = targetSize(target, event.peakReplayTime(), analysis).orElse(1.8);
         double framingMultiplier = switch (framing) {
             case EXTREME_WIDE -> 6.5;
@@ -32,12 +34,13 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
             case EXTREME_CLOSE -> 1.25;
         };
         double verticalMultiplier = request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16 ? 1.2 : 1.0;
-        double distance = clamp(size * framingMultiplier * verticalMultiplier, 1.25, 96.0);
-        double height = clamp(size * (framing == FramingType.CLOSE || framing == FramingType.EXTREME_CLOSE
-                ? 0.55 : 1.0), 0.5, 24.0);
-        double orbitDiameter = clamp(distance * 1.8, 3.0, 160.0);
-        double startDistance = clamp(distance * 1.5, 2.0, 160.0);
-        double endDistance = clamp(distance * 0.65, 1.0, startDistance);
+        double distance = prefs.clampDistance(size * framingMultiplier * verticalMultiplier);
+        double height = prefs.clampHeight(size * (framing == FramingType.CLOSE || framing == FramingType.EXTREME_CLOSE
+                ? 0.55 : 1.0));
+        double orbitDiameter = prefs.clampOrbitDiameter(distance * 1.8);
+        double startDistance = prefs.clampDistance(distance * 1.5);
+        double endDistance = prefs.clampDistance(Math.min(distance * 0.65, startDistance));
+        if (endDistance > startDistance) endDistance = startDistance;
         double rpm = clamp(0.15 + movementIntensity * 0.9, 0.05, 3.0);
         double cameraSpeed = clamp(1.5 + movementIntensity * 8.0, 0.5, 24.0);
         double fov = framing == FramingType.EXTREME_WIDE ? 78.0
@@ -52,25 +55,34 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
         EasingType easing = request.pacing() == pl.peterwolf.cinewolf.montage.preset.MontagePacing.FAST
                 ? EasingType.EASE_IN_OUT_CUBIC : EasingType.SMOOTHERSTEP;
         double resolvedDistance = switch (shotType) {
-            case CLOSE_DETAIL -> clamp(distance * 0.35, 0.8, 4.0);
-            case CHASE -> clamp(distance * 1.1, 2.0, 48.0);
-            case SPIRAL -> clamp(distance, 2.0, 64.0);
+            case CLOSE_DETAIL -> prefs.clampDistance(Math.min(distance * 0.35, prefs.maximumDistance()));
+            case CHASE -> prefs.clampDistance(distance * 1.1);
+            case SPIRAL -> prefs.clampDistance(distance);
             default -> distance;
         };
         double resolvedStart = switch (shotType) {
-            case SPIRAL -> clamp(orbitDiameter * 0.55, 2.0, 80.0);
-            case CRANE_UP -> clamp(height * 0.4, 1.0, 32.0);
-            case CRANE_DOWN -> clamp(height * 1.6, 3.0, 48.0);
+            case SPIRAL -> prefs.clampDistance(orbitDiameter * 0.55);
+            case CRANE_UP -> prefs.clampHeight(height * 0.4);
+            case CRANE_DOWN -> prefs.clampHeight(height * 1.6);
             case REVEAL -> startDistance;
             default -> startDistance;
         };
         double resolvedEnd = switch (shotType) {
-            case SPIRAL -> clamp(orbitDiameter * 0.25, 1.5, 40.0);
-            case CRANE_UP -> clamp(height * 1.8, 3.0, 48.0);
-            case CRANE_DOWN -> clamp(Math.max(1.0, height * 0.35), 1.0, 24.0);
+            case SPIRAL -> prefs.clampDistance(orbitDiameter * 0.25);
+            case CRANE_UP -> prefs.clampHeight(height * 1.8);
+            case CRANE_DOWN -> prefs.clampHeight(Math.max(prefs.minimumHeight(), height * 0.35));
             case REVEAL -> endDistance;
             default -> endDistance;
         };
+        if (shotType == ShotType.REVEAL || shotType == ShotType.DOLLY_IN || shotType == ShotType.DOLLY_OUT
+                || shotType == ShotType.SPIRAL) {
+            if (resolvedEnd > resolvedStart && shotType != ShotType.DOLLY_OUT && shotType != ShotType.CRANE_UP) {
+                // keep start farther for inward-style moves when user min/max reverse relative order
+                double tmp = resolvedStart;
+                resolvedStart = Math.max(resolvedStart, resolvedEnd);
+                resolvedEnd = Math.min(tmp, resolvedEnd);
+            }
+        }
         double resolvedRpm = shotType == ShotType.SPIRAL
                 ? clamp(0.25 + movementIntensity * 1.1, 0.1, 4.0)
                 : rpm;
@@ -79,10 +91,12 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
             case STATIC_TRACKING -> clamp(cameraSpeed * 0.5, 0.5, 8.0);
             default -> cameraSpeed;
         };
+        double lookAhead = request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16
+                ? Math.min(0.12, prefs.lookAheadSeconds())
+                : prefs.lookAheadSeconds();
         return new ShotRequest(target, shotType, orbitDiameter, height, resolvedDistance, resolvedStart, resolvedEnd,
                 resolvedRpm, outputDurationSeconds, (shotIndex * 137.5) % 360.0, direction, resolvedSpeed, fov, easing,
-                request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16 ? 0.12 : 0.2,
-                sourceStart, sourceEnd);
+                lookAhead, sourceStart, sourceEnd);
     }
 
     private static Optional<Double> targetSize(TargetReference target, long peak, ReplayAnalysisResult analysis) {

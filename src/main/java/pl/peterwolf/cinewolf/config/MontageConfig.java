@@ -42,6 +42,7 @@ public final class MontageConfig {
     public DetectorThresholdConfig detectorThresholds = new DetectorThresholdConfig();
     public EventScoringConfig eventScoring = new EventScoringConfig();
     public ShotDiversityConfig shotDiversity = new ShotDiversityConfig();
+    public MontageShotSettings shotSettings = new MontageShotSettings();
 
     public void applyPreset(MontagePreset preset) {
         outputDurationSeconds = preset.targetDurationSeconds();
@@ -88,9 +89,11 @@ public final class MontageConfig {
         if (detectorThresholds == null) detectorThresholds = new DetectorThresholdConfig();
         if (eventScoring == null) eventScoring = new EventScoringConfig();
         if (shotDiversity == null) shotDiversity = new ShotDiversityConfig();
+        if (shotSettings == null) shotSettings = new MontageShotSettings();
         detectorThresholds.normalize();
         eventScoring.normalize();
         shotDiversity.normalize();
+        shotSettings.normalize();
     }
 
     private static double positiveOr(double value, double fallback, double minimum, double maximum) {

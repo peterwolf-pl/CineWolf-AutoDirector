@@ -250,6 +250,28 @@ class DefaultMontagePlannerTest {
     }
 
     @Test
+    void respectsUserAllowedShotTypesAndDistanceLimits() {
+        MontagePreset preset = preset(MontagePresetType.THIRTY_SECONDS);
+        var prefs = new pl.peterwolf.cinewolf.config.MontageShotSettings.MontageShotPreferences(
+                Set.of(ShotType.ORBIT, ShotType.FOLLOW), 6.0, 10.0, 1.0, 4.0, 8.0, 20.0, 0.15);
+        MontageRequest request = new MontageRequest(preset, 0, 2_400, 30.0,
+                preset.aspectRatio(), preset.pacing(), Optional.of(TestFixtures.TARGET), true,
+                preset.minimumShotDuration(), preset.maximumShotDuration(),
+                preset.style().cameraMovementIntensity(), preset.style().cutFrequency(),
+                false, true, 1.0, 1.0, 0.0, 16, prefs);
+        MontagePlan plan = new DefaultMontagePlanner().createPlan(analysis(), request,
+                new MontagePlanningContext(AVAILABLE, SamplingSettings.defaults()));
+        assertTrue(plan.shots().stream().allMatch(shot ->
+                shot.shotType() == ShotType.ORBIT || shot.shotType() == ShotType.FOLLOW));
+        for (var shot : plan.shots()) {
+            assertTrue(shot.shotRequest().distance() >= 6.0 - 1.0e-6);
+            assertTrue(shot.shotRequest().distance() <= 10.0 + 1.0e-6);
+            assertTrue(shot.shotRequest().height() >= 1.0 - 1.0e-6);
+            assertTrue(shot.shotRequest().height() <= 4.0 + 1.0e-6);
+        }
+    }
+
+    @Test
     void shortensOneTimesPlanToSelectedSourceRangeInsteadOfFailing() {
         MontagePreset preset = preset(MontagePresetType.CINEMATIC_SHOWCASE);
         MontageRequest request = new MontageRequest(preset, 195, 628, 25.0,

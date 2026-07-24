@@ -45,16 +45,23 @@ public final class FlashbackEntityResolver {
     }
 
     /**
-     * Replay seeking can leave a remote entity part-way through its three client interpolation steps. Sampling
-     * {@link Entity#position()} in that state bakes a periodic back-and-forth pulse into generated camera keys.
-     * The interpolation destination is the stable pose represented by the replay packets at the requested tick.
+     * Replay seeking can leave a remote entity part-way through its client interpolation steps. Sampling the
+     * mid-lerp {@link Entity#position()} bakes a periodic forward/back pulse into camera keys.
+     * <p>
+     * Prefer the interpolation destination when active. If the destination is unreasonably far from the
+     * rendered position (stale seek state), fall back to the rendered pose rather than inventing a teleport.
      */
     private static Vec3 stableSamplePosition(Entity entity, Vec3 fallback) {
         InterpolationHandler interpolation = entity.getInterpolation();
         if (interpolation == null || !interpolation.hasActiveInterpolation()) return fallback;
         Vec3 target = interpolation.position();
-        return Double.isFinite(target.x) && Double.isFinite(target.y) && Double.isFinite(target.z)
-                ? target : fallback;
+        if (!Double.isFinite(target.x) || !Double.isFinite(target.y) || !Double.isFinite(target.z)) {
+            return fallback;
+        }
+        double jump = target.distanceTo(fallback);
+        // Destinations more than ~10 blocks from the rendered pose after a seek are usually stale.
+        if (jump > 10.0) return fallback;
+        return target;
     }
 
     public Optional<ReplayEntitySnapshot> snapshot(Entity entity) {

@@ -76,7 +76,14 @@ public final class ChaseShotGenerator extends AbstractShotGenerator implements S
             long lookAheadTick = Math.min(request.replayEndTime(),
                     replayTime + Math.round(request.lookAheadSeconds() * 20.0 * (1.0 + Math.min(0.4, speed * 0.03))));
             TargetPose predicted = context.targetPoseResolver().resolve(request.target(), lookAheadTick).orElse(target);
-            Vec3d desired = predicted.position()
+            // Never place the chase rig on a look-ahead pose that teleported far from the current subject.
+            Vec3d predictPos = predicted.position();
+            double predictLead = target.position().distanceTo(predictPos);
+            double maxPredictLead = Math.max(3.0, 5.0 + speed * 0.4);
+            if (predictLead > maxPredictLead && predictLead > 1.0e-6) {
+                predictPos = target.position().lerp(predictPos, maxPredictLead / predictLead);
+            }
+            Vec3d desired = predictPos
                     .subtract(direction.multiply(smoothedDistance))
                     .subtract(lateralLag)
                     .add(Vec3d.UP.multiply(request.height()));

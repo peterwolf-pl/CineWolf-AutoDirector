@@ -13,10 +13,11 @@ import java.util.TreeMap;
 
 public final class SampledTargetPoseResolver implements TargetPoseResolver {
     private static final double TELEPORT_DISTANCE = 16.0;
+    private static final double MAX_VELOCITY = 64.0;
     private final NavigableMap<Long, TargetPose> poses;
 
     public SampledTargetPoseResolver(Map<Long, TargetPose> poses) {
-        this.poses = new TreeMap<>(poses);
+        this.poses = new TreeMap<>(TargetPoseSanitizer.sanitize(poses));
     }
 
     @Override
@@ -31,12 +32,20 @@ public final class SampledTargetPoseResolver implements TargetPoseResolver {
         TargetPose right = ceil.getValue();
         if (!left.dimension().equals(right.dimension())) return Optional.empty();
 
+        double span = right.position().distanceTo(left.position());
+        boolean discontinuity = left.discontinuity() || right.discontinuity() || span > TELEPORT_DISTANCE;
+        // Do not lerp through teleports — hold the nearer side so chase/follow do not invent a far phantom.
+        if (discontinuity && span > TELEPORT_DISTANCE) {
+            long mid = (floor.getKey() + ceil.getKey()) / 2L;
+            TargetPose held = replayTime <= mid ? left : right;
+            return Optional.of(withEstimatedVelocity(replayTime, held, true));
+        }
+
         double amount = (replayTime - floor.getKey()) / (double) (ceil.getKey() - floor.getKey());
         Vec3d position = left.position().lerp(right.position(), amount);
         Vec3d focus = left.focusPosition().lerp(right.focusPosition(), amount);
-        Vec3d velocity = right.position().subtract(left.position()).multiply(20.0 / (ceil.getKey() - floor.getKey()));
-        boolean discontinuity = left.discontinuity() || right.discontinuity()
-                || left.position().distanceTo(right.position()) > TELEPORT_DISTANCE;
+        Vec3d velocity = clampVelocity(right.position().subtract(left.position())
+                .multiply(20.0 / (ceil.getKey() - floor.getKey())));
         return Optional.of(new TargetPose(
                 position,
                 focus,
@@ -53,20 +62,29 @@ public final class SampledTargetPoseResolver implements TargetPoseResolver {
     }
 
     private TargetPose withEstimatedVelocity(long replayTime, TargetPose pose) {
+        return withEstimatedVelocity(replayTime, pose, pose.discontinuity());
+    }
+
+    private TargetPose withEstimatedVelocity(long replayTime, TargetPose pose, boolean discontinuity) {
         Map.Entry<Long, TargetPose> before = poses.lowerEntry(replayTime);
         Map.Entry<Long, TargetPose> after = poses.higherEntry(replayTime);
-        boolean discontinuity = pose.discontinuity()
+        boolean teleported = discontinuity
                 || isTeleport(before, pose)
                 || isTeleport(pose, after);
         Vec3d velocity = pose.velocity();
-        if (velocity.lengthSquared() <= 1.0e-8 && before != null && after != null
-                && before.getValue().dimension().equals(after.getValue().dimension())) {
-            velocity = after.getValue().position().subtract(before.getValue().position())
-                    .multiply(20.0 / (after.getKey() - before.getKey()));
+        if ((!teleported || velocity.lengthSquared() <= 1.0e-8) && before != null && after != null
+                && before.getValue().dimension().equals(after.getValue().dimension())
+                && !isTeleport(before, after.getValue())) {
+            velocity = clampVelocity(after.getValue().position().subtract(before.getValue().position())
+                    .multiply(20.0 / (after.getKey() - before.getKey())));
+        } else if (velocity.lengthSquared() > 1.0e-8) {
+            velocity = clampVelocity(velocity);
+        } else {
+            velocity = Vec3d.ZERO;
         }
-        if (velocity == pose.velocity() && discontinuity == pose.discontinuity()) return pose;
+        if (velocity.equals(pose.velocity()) && teleported == pose.discontinuity()) return pose;
         return new TargetPose(pose.position(), pose.focusPosition(), pose.boundingBox(), pose.yaw(), pose.pitch(),
-                velocity, pose.entityType(), pose.inVehicle(), pose.dimension(), discontinuity);
+                velocity, pose.entityType(), pose.inVehicle(), pose.dimension(), teleported);
     }
 
     private static boolean isTeleport(Map.Entry<Long, TargetPose> other, TargetPose pose) {
@@ -77,6 +95,12 @@ public final class SampledTargetPoseResolver implements TargetPoseResolver {
     private static boolean isTeleport(TargetPose pose, Map.Entry<Long, TargetPose> other) {
         return other != null && pose.dimension().equals(other.getValue().dimension())
                 && pose.position().distanceTo(other.getValue().position()) > TELEPORT_DISTANCE;
+    }
+
+    private static Vec3d clampVelocity(Vec3d velocity) {
+        double speed = velocity.length();
+        if (!Double.isFinite(speed) || speed <= MAX_VELOCITY) return velocity;
+        return velocity.normalizeOr(Vec3d.ZERO).multiply(MAX_VELOCITY);
     }
 
     private static double interpolateAngle(double first, double second, double amount) {

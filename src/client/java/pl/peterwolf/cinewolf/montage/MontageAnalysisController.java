@@ -54,7 +54,6 @@ public final class MontageAnalysisController implements AutoCloseable {
     private final DefaultMontagePlanner planner = new DefaultMontagePlanner();
     private final MontagePlanEditor planEditor = new MontagePlanEditor();
     private final MontagePresetRegistry presets = MontagePresetRegistry.createDefault();
-    private final MontagePlanningContext planningContext;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "cinewolf-montage-analysis");
         thread.setDaemon(true);
@@ -76,8 +75,13 @@ public final class MontageAnalysisController implements AutoCloseable {
         this.adapter = Objects.requireNonNull(adapter);
         this.config = Objects.requireNonNull(config);
         this.logger = Objects.requireNonNull(logger);
-        this.planningContext = new MontagePlanningContext(ShotGeneratorRegistry.createDefault().supportedTypes(),
-                config.samplingSettings(), config.montage.shotDiversity);
+    }
+
+    private MontagePlanningContext planningContextFromConfig() {
+        config.montage.normalize();
+        var registered = ShotGeneratorRegistry.createDefault().supportedTypes();
+        var allowed = config.montage.shotSettings.resolvedAllowedTypes(registered);
+        return new MontagePlanningContext(allowed, config.samplingSettings(), config.montage.shotDiversity);
     }
 
     public StartResult start(TargetReference selectedTarget) {
@@ -289,7 +293,7 @@ public final class MontageAnalysisController implements AutoCloseable {
                             progress = (float) (0.78 + stageProgress * 0.15);
                         }, () -> current.id != generations.get());
                 MontageRequest planningRequest = planningRequest(current, result);
-                MontagePlan plan = planner.createPlan(result, planningRequest, planningContext);
+                MontagePlan plan = planner.createPlan(result, planningRequest, planningContextFromConfig());
                 long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
                 Minecraft.getInstance().execute(() -> acceptFinal(current, result, plan, elapsedMillis));
             } catch (AnalysisCancelledException ignored) {
@@ -357,7 +361,8 @@ public final class MontageAnalysisController implements AutoCloseable {
         MontagePreset preset = presets.get(config.montage.presetType).orElseThrow();
         SamplingJob synthetic = new SamplingJob(generations.get(), result.request(), preset, selectedTarget,
                 List.of(), List.of(), adapter.getCurrentReplayTime(), adapter.replayPaused());
-        MontagePlan regenerated = planner.createPlan(result, planningRequest(synthetic, result), planningContext);
+        MontagePlan regenerated = planner.createPlan(result, planningRequest(synthetic, result),
+                planningContextFromConfig());
         montagePlan = previous == null ? regenerated : planEditor.preserveLockedShots(previous, regenerated);
         phase = Phase.READY;
         setStatus("cinewolf.montage.status.replanned", montagePlan.shots().size());
@@ -463,13 +468,15 @@ public final class MontageAnalysisController implements AutoCloseable {
 
     private MontageRequest planningRequest(SamplingJob current, ReplayAnalysisResult result) {
         MontageConfig settings = config.montage;
+        settings.normalize();
+        var registered = ShotGeneratorRegistry.createDefault().supportedTypes();
         return new MontageRequest(current.preset, current.request.startReplayTime(), current.request.endReplayTime(),
                 settings.outputDurationSeconds, settings.aspectRatio, settings.pacing,
                 java.util.Optional.ofNullable(current.selectedTarget), settings.automaticTargetDetection,
                 settings.minimumShotDuration, settings.maximumShotDuration, settings.cameraMovementIntensity,
                 settings.cutFrequency, settings.allowReplaySpeedChanges, settings.preferChronologicalOrder,
                 settings.minimumReplaySpeed, settings.maximumReplaySpeed, settings.maximumReplaySpeedChange,
-                settings.maximumPlannedShots);
+                settings.maximumPlannedShots, settings.shotSettings.toPreferences(registered));
     }
 
     private static Set<ReplayEventType> enabledTypes(MontageConfig settings) {

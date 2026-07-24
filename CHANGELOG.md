@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.8 - 2026-07-24
+
+- Added montage shot preferences: enable/disable each generator type used by Analyze/Regenerate.
+- Added min/max camera distance, height, orbit diameter, and montage look-ahead limits (config + Generate Montage UI).
+- Planner and shot template resolver honor the allowed type set and clamp framing geometry to user limits.
+- English and Polish localization for the new controls.
+
+## 1.3.7 - 2026-07-24
+
+- Fixed periodic “player yanked far away” camera pulses caused by isolated seek/interpolation pose spikes.
+- Added `TargetPoseSanitizer` (applied inside `SampledTargetPoseResolver`) to rewrite out-and-back target samples.
+- Clamp estimated target velocity (64 b/s) and avoid lerping camera targets through teleports.
+- Cap look-ahead aim lead and chase prediction lead so one bad future sample cannot pull framing.
+- Wider common-mode path jitter rejection (up to 6 blocks shared camera+aim pulse).
+- Wait one extra client tick after replay seek before sampling entity poses; reject stale interpolation destinations >10 blocks from rendered pose.
+
 ## 1.3.6 - 2026-07-24
 
 - Reduced intra-shot camera jumps from keyframe simplification, flight tracking, collision recovery, and look-at whip.

@@ -16,7 +16,8 @@ public final class CameraPathSmoother {
     private static final double REVERSAL_DOT_LIMIT = -0.25;
     private static final double MIN_DIRECTION_RESULTANT = 0.25;
     private static final double MIN_COMMON_MODE_JITTER = 0.01;
-    private static final double MAX_COMMON_MODE_JITTER = 0.75;
+    /** Allow larger shared camera+aim pulses from seek/interpolation outliers (was 0.75). */
+    private static final double MAX_COMMON_MODE_JITTER = 6.0;
     private static final double COMMON_MODE_RESIDUAL_MISMATCH = 0.25;
     private static final double ISOLATED_RESIDUAL_DOMINANCE = 1.5;
     private static final double OUTER_TREND_ALIGNMENT = 0.25;

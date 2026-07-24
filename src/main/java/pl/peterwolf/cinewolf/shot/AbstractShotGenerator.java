@@ -81,8 +81,15 @@ abstract class AbstractShotGenerator {
                                   Vec3d cameraPosition, TargetPose targetPose, double previousYaw,
                                   double previousPitch, double deltaSeconds) {
         long lookAheadTick = Math.min(request.replayEndTime(), replayTime + Math.round(request.lookAheadSeconds() * 20.0));
+        Vec3d currentFocus = targetPose.focusPosition();
         Vec3d focus = context.targetPoseResolver().resolve(request.target(), lookAheadTick)
-                .map(TargetPose::focusPosition).orElse(targetPose.focusPosition());
+                .map(TargetPose::focusPosition).orElse(currentFocus);
+        // Cap look-ahead lead so a single bad future sample cannot yank aim far from the subject.
+        double maxLead = Math.max(4.0, 6.0 + targetPose.velocity().length() * 0.35);
+        double lead = currentFocus.distanceTo(focus);
+        if (lead > maxLead && lead > 1.0e-6) {
+            focus = currentFocus.lerp(focus, maxLead / lead);
+        }
         double maxYawRate = CameraLookAtSolver.DEFAULT_MAX_YAW_DEGREES_PER_SECOND;
         double maxPitchRate = CameraLookAtSolver.DEFAULT_MAX_PITCH_DEGREES_PER_SECOND;
         if (request.shotType().isDynamicTracking()) {
