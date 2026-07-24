@@ -16,6 +16,8 @@ public final class DefaultMontagePlaybackSession implements MontagePlaybackSessi
     private MontagePlaybackState state = MontagePlaybackState.IDLE;
     private double outputSeconds;
     private String statusKey = "cinewolf.montage.preview.idle";
+    private LoopMode loopMode = LoopMode.NONE;
+    private double playbackSpeed = 1.0;
 
     @Override
     public boolean enter(MontagePlan montagePlan) {
@@ -33,11 +35,44 @@ public final class DefaultMontagePlaybackSession implements MontagePlaybackSessi
     @Override
     public void tick() {
         if (state != MontagePlaybackState.PLAYING || plan == null) return;
-        outputSeconds = Math.min(plan.outputDurationSeconds(), outputSeconds + 1.0 / 20.0);
+        double step = (1.0 / 20.0) * Math.max(0.1, Math.min(4.0, playbackSpeed));
+        outputSeconds = Math.min(plan.outputDurationSeconds(), outputSeconds + step);
         if (outputSeconds >= plan.outputDurationSeconds() - 1.0e-6) {
+            if (loopMode == LoopMode.MONTAGE) {
+                outputSeconds = 0.0;
+                statusKey = "cinewolf.montage.preview.playing";
+                return;
+            }
+            if (loopMode == LoopMode.SHOT) {
+                currentShotId().flatMap(id -> plan.enabledShots().stream()
+                        .filter(shot -> shot.shotId().equals(id)).findFirst())
+                        .ifPresent(shot -> outputSeconds = shot.outputStartSeconds());
+                statusKey = "cinewolf.montage.preview.playing";
+                return;
+            }
             state = MontagePlaybackState.FINISHED;
             statusKey = "cinewolf.montage.preview.finished";
         }
+    }
+
+    @Override
+    public void setLoopMode(LoopMode loopMode) {
+        this.loopMode = loopMode == null ? LoopMode.NONE : loopMode;
+    }
+
+    @Override
+    public LoopMode loopMode() {
+        return loopMode;
+    }
+
+    @Override
+    public void setPlaybackSpeed(double speed) {
+        this.playbackSpeed = Math.max(0.1, Math.min(4.0, speed));
+    }
+
+    @Override
+    public double playbackSpeed() {
+        return playbackSpeed;
     }
 
     @Override

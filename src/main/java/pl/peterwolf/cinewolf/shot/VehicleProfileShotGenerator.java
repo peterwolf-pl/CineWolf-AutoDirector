@@ -70,11 +70,11 @@ public final class VehicleProfileShotGenerator extends AbstractShotGenerator imp
         VehicleProfileStyle style = request.options().vehicleProfileStyle();
         if (style != null && style != VehicleProfileStyle.AUTO) return style;
         return switch (vehicle.category()) {
-            case TRAIN -> VehicleProfileStyle.LOCOMOTIVE_FRONT;
+            case TRAIN, CONVOY -> VehicleProfileStyle.LOCOMOTIVE_FRONT;
             case AIRCRAFT -> VehicleProfileStyle.WING_VIEW;
             case MINECART -> VehicleProfileStyle.TRACKSIDE;
-            case BOAT, HORSE -> VehicleProfileStyle.SIDE_PROFILE;
-            case ZIPLINE -> VehicleProfileStyle.SIDE_PROFILE;
+            case BOAT, HORSE, MOUNT, GROUND_VEHICLE -> VehicleProfileStyle.SIDE_PROFILE;
+            case ZIPLINE, ZIP_LINE -> VehicleProfileStyle.SIDE_PROFILE;
             case GENERIC -> VehicleProfileStyle.FRONT_THREE_QUARTER;
         };
     }

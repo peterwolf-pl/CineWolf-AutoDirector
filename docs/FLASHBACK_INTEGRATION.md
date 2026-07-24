@@ -92,11 +92,13 @@ Montage preview is temporary. Multi-path lines and the vertical guide do not mut
 
 ## Compatibility behavior
 
-`fabric.mod.json` requires Flashback to be installed but leaves its declared version broad enough for CineWolf to display its own precise compatibility message. On an unsupported version:
+`fabric.mod.json` lists Flashback under `suggests` so Minecraft still loads when Flashback is absent. On a missing or unsupported version:
 
 1. `FlashbackMixinPlugin` declines the Flashback mixins before target application.
-2. The client initializer does not instantiate the adapter, panel, sampler, or preview renderer.
+2. The client initializer keeps config + integration registration, but does not instantiate the editor adapter/panel/sampler/preview path.
 3. CineWolf logs the detected and supported versions once.
 4. A red client chat message explains that editor integration is disabled.
 
-No compatibility error is logged per frame. Supporting a future Flashback release requires source inspection, mixin target validation, timeline transaction validation, and the complete manual checklist before the exact version gate is changed.
+No compatibility error is logged per frame. Capability flags (`FlashbackCapabilities`) disable unsupported features with UI tooltips rather than silent emulation. Supporting a future Flashback release requires source inspection, mixin target validation, timeline transaction validation, and the complete manual checklist before the exact version gate is changed.
+
+See also [Flashback compatibility](FLASHBACK_COMPATIBILITY.md) and [timeline visualization](FLASHBACK_TIMELINE_VISUALIZATION.md).

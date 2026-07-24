@@ -37,4 +37,9 @@ public record MontagePlan(
     public List<PlannedMontageShot> enabledShots() {
         return shots.stream().filter(PlannedMontageShot::enabled).toList();
     }
+
+    public MontagePlan withWarnings(List<MontageWarning> nextWarnings) {
+        return new MontagePlan(montageId, preset, sourceStartReplayTime, sourceEndReplayTime,
+                outputDurationSeconds, shots, transitions, timeMappings, statistics, nextWarnings);
+    }
 }

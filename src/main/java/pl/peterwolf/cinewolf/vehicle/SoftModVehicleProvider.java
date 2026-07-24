@@ -60,7 +60,7 @@ public final class SoftModVehicleProvider implements VehicleProvider {
             return VehicleCategory.TRAIN;
         }
         if (type.contains("plane") || type.contains("aircraft")) return VehicleCategory.AIRCRAFT;
-        if (type.contains("zipline")) return VehicleCategory.ZIPLINE;
+        if (type.contains("zipline")) return VehicleCategory.ZIP_LINE;
         return fallback;
     }
 }

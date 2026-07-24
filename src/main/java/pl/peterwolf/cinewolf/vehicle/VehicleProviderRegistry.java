@@ -36,7 +36,11 @@ public final class VehicleProviderRegistry {
 
     public static VehicleProviderRegistry createDefault() {
         return new VehicleProviderRegistry()
+                .register(new pl.peterwolf.cinewolf.vehicle.integration.MinecartChainVehicleProvider())
+                .register(new pl.peterwolf.cinewolf.vehicle.integration.PeterWolfPlanesVehicleProvider())
+                .register(new pl.peterwolf.cinewolf.vehicle.integration.ZipLineVehicleProvider())
                 .register(new BuiltinVehicleProvider())
-                .register(new SoftModVehicleProvider());
+                .register(new SoftModVehicleProvider())
+                .register(new GenericVehicleProfileProvider());
     }
 }

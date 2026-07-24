@@ -67,6 +67,7 @@ public final class AutoDirectorPanel {
 
         ImGui.setNextWindowSizeConstraints(360, 180, 760, 1100);
         if (ImGui.begin(tr("cinewolf.panel.title") + "###CineWolfAutoDirector", ImGuiWindowFlags.AlwaysAutoResize)) {
+            renderStatusHeader();
             renderTargetSelector();
             if (ImGui.beginTabBar("CineWolfModes")) {
                 if (ImGui.beginTabItem(tr("cinewolf.tab.single_shot"))) {
@@ -86,6 +87,32 @@ public final class AutoDirectorPanel {
             }
         }
         ImGui.end();
+    }
+
+    private void renderStatusHeader() {
+        var status = adapter.compatibilityStatus();
+        String version = adapter.editorVersion();
+        ImGui.textDisabled(tr("cinewolf.v2.title"));
+        if (status != null) {
+            ImGui.text(String.format(Locale.ROOT, tr("cinewolf.compatibility.detected"),
+                    version == null ? "?" : version));
+            ImGui.text(String.format(Locale.ROOT, tr("cinewolf.compatibility.level"),
+                    status.level().name()));
+            ImGui.textDisabled(String.format(Locale.ROOT, tr("cinewolf.compatibility.supported_range"),
+                    status.supportedVersionRange()));
+            if (!status.warnings().isEmpty() && ImGui.isItemHovered(TOOLTIP_HOVER_FLAGS)) {
+                ImGui.setTooltip(String.join("\n", status.warnings()));
+            }
+            var caps = status.capabilities();
+            if (!caps.entityTracking()) {
+                ImGui.textDisabled(tr("cinewolf.compatibility.feature_disabled_tooltip") + " (entity tracking)");
+            }
+            if (!caps.rollKeyframes()) {
+                ImGui.textDisabled(tr("cinewolf.compatibility.feature_disabled_tooltip") + " (roll)");
+            }
+        }
+        ImGui.textDisabled(tr("cinewolf.timeline.overlay_fallback"));
+        ImGui.separator();
     }
 
     private void renderTargetSelector() {

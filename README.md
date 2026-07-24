@@ -2,7 +2,7 @@
 
 CineWolf AutoDirector is a client-side Fabric extension for Flashback that turns replay activity into editable cinematic camera work. It generates single shots or multi-shot montages with deterministic local replay analysis.
 
-Version **1.3.5** targets Minecraft Java Edition 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, and Flashback 0.41.1.
+Version **2.0.0** targets Minecraft Java Edition 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, and Flashback 0.41.1.
 
 ## Privacy and determinism
 
@@ -13,7 +13,12 @@ Montage generation runs entirely on the local client. CineWolf uses no AI servic
 - Stable UUID-based entity targets selected from CineWolf, Flashback selection, the crosshair, or the spectated entity.
 - Fourteen shot generators shared by manual shots and montage planning: Orbit, Follow, Flyby, Dolly In/Out, Reveal, Crane Up/Down, Spiral, Static Tracking, Side Tracking, Chase, Close Detail, and Vehicle Profile.
 - Group/structure/vehicle-aware framing helpers, visibility analysis, and multi-strategy collision avoidance.
-- User montage preset import/export and richer non-destructive montage playback (seek and shot navigation).
+- Soft vehicle profiles plus optional PeterWolf train/plane/zipline integrations (no hard dependencies).
+- Public Integration API 2.0 for third-party vehicle/target/event/shot/preset providers.
+- Local community preset library with validated bundles (no network).
+- Replay-bound cinematic projects (schema v2) with migration, autosave, and recovery.
+- Montage Engine 2.0 style profiles, narrative phases, diversity, and vehicle-aware templates.
+- User montage preset import/export and richer non-destructive montage playback (seek, shot navigation, loop modes).
 - Bounded coarse-to-detailed replay sampling with cancellation and restoration of the original replay time and pause state.
 - Movement metrics using central differences where possible, boundary differences at range edges, smoothing, and teleport/dimension discontinuities.
 - Deterministic event models for movement, speed, acceleration, turns, altitude, combat, damage, death, vehicles, flight, landing, block activity, pauses, and replay markers when the underlying replay exposes enough evidence.
@@ -44,10 +49,10 @@ Built-ins live in a registry that also accepts validated user-defined presets (i
 1. Install Fabric Loader for Minecraft 26.2.
 2. Install Fabric API 0.153.0+26.2 or a compatible newer 26.2 build.
 3. Install Flashback 0.41.1.
-4. Put `cinewolf-autodirector-1.3.5.jar` in the client `mods` folder.
+4. Put `cinewolf-autodirector-2.0.0.jar` in the client `mods` folder.
 5. Open a replay in Flashback. The **CineWolf AutoDirector** window appears in the replay editor.
 
-Flashback is an external required dependency. CineWolf does not shade, bundle, copy, or modify it.
+Flashback is an external dependency for cinematic editing features. CineWolf does not shade, bundle, copy, or modify it. Without Flashback, CineWolf still loads safely with editor features disabled.
 
 ## Generate Montage
 
@@ -85,21 +90,21 @@ Flashback 0.41.1 does not provide a stable source-cut abstraction for arbitrary 
 
 ## Configuration
 
-Preferences are stored in `config/cinewolf-autodirector.json`. Schema version 4 adds a shared `pathSmoothing` section with position/rotation strengths, a time window, and isolated-motion rejection controls. The `montage` section retains detector-threshold, event-scoring, shot-diversity, output, sampling, collision, replay-speed, safe-area, and debug settings. Legacy manual-shot and montage values are preserved during migration. Malformed files are moved to `cinewolf-autodirector.json.malformed` and replaced with safe defaults.
+Preferences are stored in `config/cinewolf-autodirector.json`. Schema version 5 keeps the shared `pathSmoothing` section and extends `montage` with Montage Engine 2.0 style id, weak-event exclusion, debug redaction, community library toggle, and autosave debounce. Detector-threshold, event-scoring, shot-diversity, output, sampling, collision, replay-speed, safe-area, and debug settings remain. Legacy manual-shot and montage values are preserved during migration. Malformed files are moved to `cinewolf-autodirector.json.malformed` and replaced with safe defaults.
 
 ## Known limitations
 
-- Flashback has no stable extension API. CineWolf 1.3.5 supports exactly Flashback 0.41.1 and disables its integration mixins on other versions.
+- Flashback has no stable public extension API. CineWolf 2.0 supports exactly Flashback 0.41.1 for full editor integration and disables risky mixins on other versions.
 - Arbitrary-time entity state is obtained by pausing and seeking the local replay, waiting until Flashback state is ready, copying immutable snapshots, and restoring the original state. Long ranges can take noticeable time.
 - Events are emitted only when direct packet/state evidence or conservative deterministic inference is available. Missing signals are warnings, not fabricated events; modded entity behavior can still produce false positives or false negatives.
-- Native camera/FOV/Timelapse tracks are source-bound. Version 1.2.0 uses one continuous chronological source window; non-adjacent source cuts, reverse playback, and moving the montage after the last unrelated camera key are rejected.
+- Native camera/FOV/Timelapse tracks are source-bound. Continuous chronological source windows remain the safe default; multi-region assembly is limited by Flashback Timelapse capabilities.
 - TikTok and YouTube Short store 9:16 composition metadata and show a guide; CineWolf does not crop, resize, render, encode, or upload video.
-- Collision avoidance uses the locally loaded replay world with multi-strategy correction (raise, radial pull, lateral translation, radius reduction, path shortening, control points). Unresolved obstructions remain visible as warnings.
-- The native Flashback timeline is not extended with CineWolf event glyphs; the montage panel uses its own mini-timeline (Flashback 0.41.1 has no stable timeline extension API).
+- Collision avoidance uses the locally loaded replay world with multi-strategy correction. Unresolved obstructions remain visible as warnings.
+- The native Flashback timeline is not extended with CineWolf event glyphs; the montage panel uses its own mini-timeline.
 - Soft vehicle providers use entity-type heuristics only; third-party mods are not hard dependencies.
-- ReplayMod is not supported; its adapter remains planned for 2.0.
+- ReplayMod is not supported. CineWolf AutoDirector 2.0 is designed exclusively for Flashback.
 
-See [Architecture](docs/ARCHITECTURE.md), [Flashback integration](docs/FLASHBACK_INTEGRATION.md), [montage analysis](docs/MONTAGE_ANALYSIS.md), [event detection](docs/EVENT_DETECTION.md), [montage planning](docs/MONTAGE_PLANNER.md), [vertical formats](docs/VERTICAL_FORMATS.md), [manual tests](docs/MANUAL_TESTS.md), and the [roadmap](docs/ROADMAP.md).
+See [Architecture](docs/ARCHITECTURE.md), [Flashback integration](docs/FLASHBACK_INTEGRATION.md), [Flashback compatibility](docs/FLASHBACK_COMPATIBILITY.md), [API v2](docs/CINEWOLF_API_V2.md), [Montage Engine 2](docs/MONTAGE_ENGINE_2.md), [vehicle profiles](docs/VEHICLE_PROFILES.md), [community presets](docs/COMMUNITY_PRESET_LIBRARY.md), [manual tests](docs/MANUAL_TESTS.md), and the [roadmap](docs/ROADMAP.md).
 
 ## Building
 

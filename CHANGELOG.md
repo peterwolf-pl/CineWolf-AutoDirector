@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.0.0 - 2026-07-24
+
+CineWolf AutoDirector 2.0 is a Flashback-only cinematic production platform.
+
+### Flashback integration
+- Strengthened `FlashbackReplayEditorAdapter` boundary with capabilities, compatibility status, replay identity, playback state, and transaction diagnostics.
+- Versioned `FlashbackCompatibilityRegistry` with `SUPPORTED` / `EXPERIMENTAL` / `UNSUPPORTED` / `MISSING` levels.
+- Flashback is a soft `suggests` dependency; CineWolf loads without crashing when Flashback is missing.
+- Capability-aware camera writes; unsupported options are disabled with clear messaging.
+- Atomic write path captures pre-write snapshots via `FlashbackTransactionManager`.
+
+### Public API 2.0
+- Stable package `pl.peterwolf.cinewolf.api.v2` with `CineWolfIntegration`, registration context, and isolated `CineWolfIntegrationManager`.
+- Failing third-party integrations never disable the rest of CineWolf.
+
+### Vehicles
+- Rich `VehicleProfile` model with state, capabilities, oriented bounds, and expanded anchors.
+- Categories: train/convoy/mount/ground vehicle/zip-line and existing types.
+- Soft PeterWolf integrations: Minecart Chain Train, Planes, Zip-line (no hard dependencies).
+- Generic fallback for unknown modded vehicles.
+
+### Montage Engine 2.0
+- Style profiles (Clean Cinematic, High Energy, Documentary, Vehicle/Architecture Showcase, Trailer, Vertical Fast Cut, Slow Atmospheric, Action Tracking, Train Journey, Flight Showcase).
+- Narrative phase planning, duration allocation, shot diversity, vehicle-aware templates, capability-aware shot resolution.
+
+### Community presets & projects
+- Local community preset library with validated bundles, search/filter, favourites, ratings (no network).
+- `CineWolfProjectV2` with replay identity, migration from schema 1, autosave, and recovery.
+
+### Diagnostics & preview
+- Diagnostics export v2 with integration/timeline/event false-positive hints and redaction.
+- Montage preview loop modes and playback speed controls.
+- Status header shows Flashback compatibility and capability limitations.
+
+### Removed / out of scope
+- No ReplayMod package, adapters, or future-support placeholders.
+
 ## 1.3.11 - 2026-07-24
 
 - Hotkeys to mark montage moments/fragments while watching a replay (or recording):

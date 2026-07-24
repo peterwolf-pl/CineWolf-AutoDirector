@@ -6,7 +6,7 @@ import pl.peterwolf.cinewolf.model.SamplingSettings;
 import pl.peterwolf.cinewolf.model.ShotType;
 
 public final class CineWolfConfig {
-    public static final int CURRENT_VERSION = 4;
+    public static final int CURRENT_VERSION = 5;
 
     public int version = CURRENT_VERSION;
     public boolean previewVisible = true;

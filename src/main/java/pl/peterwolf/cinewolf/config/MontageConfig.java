@@ -60,6 +60,16 @@ public final class MontageConfig {
     public double verticalSafeArea = 0.82;
     public boolean debugVisualization;
     public boolean debugJsonExport;
+    /** Montage Engine 2.0 style profile id (see MontageStyleProfiles). */
+    public String montageStyleProfileId = "clean_cinematic";
+    /** Exclude weak events from default montage generation. */
+    public boolean excludeWeakEvents = true;
+    /** Redact player names and absolute paths in debug export. */
+    public boolean redactDebugExport = true;
+    /** Local community preset library enabled. */
+    public boolean communityPresetLibraryEnabled = true;
+    /** Debounced project autosave interval in milliseconds. */
+    public int projectAutosaveDebounceMillis = 1500;
     public DetectorThresholdConfig detectorThresholds = new DetectorThresholdConfig();
     public EventScoringConfig eventScoring = new EventScoringConfig();
     public ShotDiversityConfig shotDiversity = new ShotDiversityConfig();
@@ -121,6 +131,10 @@ public final class MontageConfig {
         obstacleHandling = mode.name();
         // Keep legacy boolean in sync for any external readers / older UI paths.
         collisionAvoidance = mode.adjustsCameraPath();
+        if (montageStyleProfileId == null || montageStyleProfileId.isBlank()) {
+            montageStyleProfileId = "clean_cinematic";
+        }
+        projectAutosaveDebounceMillis = Math.max(250, Math.min(30_000, projectAutosaveDebounceMillis));
         if (detectorThresholds == null) detectorThresholds = new DetectorThresholdConfig();
         if (eventScoring == null) eventScoring = new EventScoringConfig();
         if (shotDiversity == null) shotDiversity = new ShotDiversityConfig();

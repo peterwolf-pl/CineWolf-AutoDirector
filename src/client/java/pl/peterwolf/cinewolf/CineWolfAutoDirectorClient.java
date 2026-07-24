@@ -37,19 +37,27 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
     private static MontageHighlightController montageHighlightController;
     private static VerticalSafeAreaOverlay verticalSafeAreaOverlay;
     private static boolean compatibilityMessageShown;
+    private static boolean editorIntegrationEnabled;
 
     @Override
     public void onInitializeClient() {
         CineWolfConfigManager configManager = new CineWolfConfigManager(LOGGER);
         configManager.load();
+
+        // Integration registration and config remain available without Flashback.
+        CineWolfAutoDirectorMod.integrations();
+
         if (!FlashbackCompatibility.isSupportedRuntime()) {
-            LOGGER.error("{}. Supported range: exactly {}.", FlashbackCompatibility.failureMessage(),
-                    FlashbackCompatibility.SUPPORTED_VERSION);
+            FlashbackCompatibility.logFailureOnce(LOGGER);
+            editorIntegrationEnabled = false;
             ClientTickEvents.END_CLIENT_TICK.register(client -> showCompatibilityMessage(client,
                     FlashbackCompatibility.failureMessage()));
+            LOGGER.info("CineWolf AutoDirector {} loaded without Flashback editor integration",
+                    CineWolfAutoDirector.VERSION);
             return;
         }
 
+        editorIntegrationEnabled = true;
         CineWolfKeybinds.register();
         FlashbackReplayEditorAdapter adapter = new FlashbackReplayEditorAdapter(LOGGER);
         OcclusionClipController.get().bindConfig(configManager.get());
@@ -90,10 +98,15 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
             montageAnalysisController.close();
             montageGenerationController.close();
             montagePreviewController.exit();
+            adapter.close();
             if (verticalSafeAreaOverlay != null) verticalSafeAreaOverlay.hide();
         });
         LOGGER.info("CineWolf AutoDirector {} initialized for Minecraft 26.2 and Flashback {}",
                 CineWolfAutoDirector.VERSION, FlashbackCompatibility.SUPPORTED_VERSION);
+    }
+
+    public static boolean isEditorIntegrationEnabled() {
+        return editorIntegrationEnabled;
     }
 
     public static void renderPanel() {

@@ -64,11 +64,15 @@ public final class BuiltinVehicleProvider implements VehicleProvider {
 
     private static VehicleCategory categoryFor(TargetReference target, TargetPose pose) {
         String type = (target.entityType() + " " + pose.entityType()).toLowerCase(Locale.ROOT);
-        if (type.contains("minecart")) return VehicleCategory.MINECART;
-        if (type.contains("boat")) return VehicleCategory.BOAT;
-        if (type.contains("horse") || type.contains("camel") || type.contains("donkey") || type.contains("mule")) {
-            return VehicleCategory.HORSE;
+        if (type.contains("furnace_minecart") || type.contains("chest_minecart") || type.contains("minecart")) {
+            return VehicleCategory.MINECART;
         }
+        if (type.contains("chest_boat") || type.contains("boat")) return VehicleCategory.BOAT;
+        if (type.contains("horse") || type.contains("camel") || type.contains("donkey") || type.contains("mule")
+                || type.contains("pig") || type.contains("strider")) {
+            return type.contains("horse") || type.contains("camel") ? VehicleCategory.HORSE : VehicleCategory.MOUNT;
+        }
+        if (type.contains("elytra")) return VehicleCategory.AIRCRAFT;
         if (type.contains("train") || type.contains("locomotive") || type.contains("carriage")) {
             return VehicleCategory.TRAIN;
         }
@@ -77,7 +81,10 @@ public final class BuiltinVehicleProvider implements VehicleProvider {
             return VehicleCategory.AIRCRAFT;
         }
         if (type.contains("zipline") || type.contains("zip_line") || type.contains("zip-line")) {
-            return VehicleCategory.ZIPLINE;
+            return VehicleCategory.ZIP_LINE;
+        }
+        if (type.contains("car") || type.contains("truck") || type.contains("bike")) {
+            return VehicleCategory.GROUND_VEHICLE;
         }
         if (pose.inVehicle()) return VehicleCategory.GENERIC;
         return null;

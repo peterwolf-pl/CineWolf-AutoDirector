@@ -15,5 +15,10 @@ public record MontageWarning(String code, Severity severity, List<String> argume
                 java.util.Arrays.stream(arguments).map(String::valueOf).toList());
     }
 
+    public static MontageWarning info(String code, Object... arguments) {
+        return new MontageWarning(code, Severity.INFO,
+                java.util.Arrays.stream(arguments).map(String::valueOf).toList());
+    }
+
     public enum Severity { INFO, WARNING, ERROR }
 }

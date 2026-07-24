@@ -1,6 +1,27 @@
 # Manual test checklist
 
-Use Minecraft 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, Flashback 0.41.1, and the current CineWolf **1.3.5** build. Keep a backup copy of any replay project used for destructive conflict tests.
+Use Minecraft 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, Flashback 0.41.1, and the current CineWolf **2.0.0** build. Keep a backup copy of any replay project used for destructive conflict tests.
+
+## Version 2.0 acceptance checklist (summary)
+
+1. - [ ] Start Minecraft with Flashback installed; CineWolf panel opens in the editor.
+2. - [ ] Start Minecraft without Flashback; game loads, editor features disabled, one clear message.
+3. - [ ] Open a Flashback replay and generate every supported single shot type.
+4. - [ ] Preview shots/montages non-destructively; confirm state restoration.
+5. - [ ] Generate a montage; undo restores complete previous timeline state.
+6. - [ ] Conflict modes: Cancel (default), Add, Replace interval only.
+7. - [ ] Test targets: player, group/structure if available, minecart, boat, train-like, aircraft-like, zipline-like, unknown modded vehicle.
+8. - [ ] Import/export community preset bundles; reject corrupted/dangerous bundles.
+9. - [ ] Search/filter/favourite presets in the local library.
+10. - [ ] Migrate a 1.x project; restore autosave; verify replay identity mismatch handling.
+11. - [ ] Inspect Montage Engine 2.0 style profiles and vehicle-aware planning warnings.
+12. - [ ] Export diagnostics v2 and redacted diagnostics.
+13. - [ ] Close replay during analysis/preview/write and confirm safe cleanup.
+14. - [ ] Unsupported Flashback version does not crash; Polish localization loads.
+
+---
+
+# Legacy Generate Montage checklist (still valid)
 
 Record the replay name, selected tick range, preset, targets, settings, result, warnings, and any relevant log excerpt for each failure.
 

@@ -90,7 +90,7 @@ class CineWolfConfigManagerTest {
 
         CineWolfConfig config = new CineWolfConfigManager(LoggerFactory.getLogger("test"), path).load();
 
-        assertEquals(4, config.version);
+        assertEquals(CineWolfConfig.CURRENT_VERSION, config.version);
         assertEquals(24.0, config.diameter, 1.0e-9);
         assertFalse(config.pathSmoothing.enabled);
         assertFalse(config.pathSmoothing.outlierRejection);

@@ -15,6 +15,8 @@ import net.minecraft.world.phys.EntityHitResult;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import pl.peterwolf.cinewolf.api.ReplayEditorAdapter;
+import pl.peterwolf.cinewolf.compatibility.CompatibilityStatus;
+import pl.peterwolf.cinewolf.compatibility.FlashbackCapabilities;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.TargetPose;
 import pl.peterwolf.cinewolf.model.TargetReference;
@@ -23,8 +25,11 @@ import pl.peterwolf.cinewolf.mixin.flashback.ReplayServerAccessor;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayEntitySnapshot;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayMarkerSnapshot;
 import pl.peterwolf.cinewolf.montage.analysis.ReplaySample;
+import pl.peterwolf.cinewolf.project.v2.ReplayIdentity;
+import pl.peterwolf.cinewolf.project.v2.ReplayIdentityResolverV2;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -39,6 +44,8 @@ public final class FlashbackReplayEditorAdapter implements ReplayEditorAdapter {
     private final Logger logger;
     private final FlashbackEntityResolver entityResolver = new FlashbackEntityResolver();
     private final FlashbackKeyframeWriter keyframeWriter = new FlashbackKeyframeWriter();
+    private final FlashbackTransactionManager transactionManager = new FlashbackTransactionManager();
+    private final ReplayIdentityResolverV2 identityResolver = new ReplayIdentityResolverV2();
 
     public FlashbackReplayEditorAdapter(Logger logger) {
         this.logger = logger;
@@ -54,9 +61,56 @@ public final class FlashbackReplayEditorAdapter implements ReplayEditorAdapter {
         return isAvailable() && Flashback.isInReplay() && ReplayUI.isActive() && EditorStateManager.getCurrent() != null;
     }
 
+    @Override
+    public boolean isReplayOpen() {
+        return isInReplay();
+    }
+
+    @Override
+    public boolean isEditorScreenOpen() {
+        return isAvailable() && ReplayUI.isActive();
+    }
+
+    @Override
+    public String editorVersion() {
+        return FlashbackCompatibility.detectedVersion().orElse("missing");
+    }
+
+    @Override
+    public CompatibilityStatus compatibilityStatus() {
+        return FlashbackCompatibility.status();
+    }
+
+    @Override
+    public FlashbackCapabilities capabilities() {
+        return FlashbackCompatibility.capabilities();
+    }
+
+    @Override
+    public ReplayIdentity getReplayIdentity() {
+        ReplayServer server = Flashback.getReplayServer();
+        if (server == null) {
+            return new ReplayIdentity("none", "none", 0, Instant.EPOCH, "", "");
+        }
+        String metaId = server.getMetadata() == null || server.getMetadata().replayIdentifier == null
+                ? ""
+                : server.getMetadata().replayIdentifier.toString();
+        String display = metaId.isBlank() ? "flashback-replay" : metaId;
+        return identityResolver.resolve(display, metaId, server.getTotalReplayTicks(), Instant.EPOCH, display);
+    }
+
+    @Override
+    public ReplayPlaybackState getPlaybackState() {
+        return new ReplayPlaybackState(!replayPaused(), getCurrentReplayTime(), 1.0);
+    }
+
     /** True while a Flashback replay world is loaded (editor UI may be closed). */
     public boolean isInReplay() {
         return isAvailable() && Flashback.isInReplay() && Flashback.getReplayServer() != null;
+    }
+
+    public FlashbackTransactionManager transactionManager() {
+        return transactionManager;
     }
 
     public boolean isRecording() {
@@ -177,10 +231,25 @@ public final class FlashbackReplayEditorAdapter implements ReplayEditorAdapter {
 
     @Override
     public KeyframeWriteResult writeCameraPath(CameraPathPlan plan, KeyframeWriteOptions options) {
+        if (!capabilities().supportsCameraWriting()) {
+            return new KeyframeWriteResult(false, 0, 0, "cinewolf.write.capability_unavailable");
+        }
+        ConflictMode mode = options == null ? ConflictMode.CANCEL : options.conflictMode();
+        if (mode == ConflictMode.SEPARATE_LAYER && !capabilities().customMetadata()) {
+            return new KeyframeWriteResult(false, 0, 0, "cinewolf.write.separate_layer_unsupported");
+        }
+        if (mode == ConflictMode.INSERT_AFTER_EXISTING) {
+            // Map to non-destructive add; placement is handled by montage writer for montages.
+            options = new KeyframeWriteOptions(ConflictMode.ADD_WITHOUT_DELETING);
+        }
+        String operationId = "camera-path-" + System.currentTimeMillis();
+        transactionManager.captureSnapshot(operationId);
         KeyframeWriteResult result = keyframeWriter.write(plan, options);
         if (result.success()) {
+            transactionManager.markSuccess(operationId, result.cameraKeyframes(), result.fovKeyframes(), 0, true, List.of());
             logger.info("Wrote CineWolf path: {} camera keyframes, {} FOV keyframes", result.cameraKeyframes(), result.fovKeyframes());
         } else {
+            transactionManager.markFailure(operationId, false, List.of(), result.message());
             logger.warn("CineWolf path write rejected: {}", result.message());
         }
         return result;
@@ -195,6 +264,16 @@ public final class FlashbackReplayEditorAdapter implements ReplayEditorAdapter {
     public void refreshTimeline() {
         EditorState state = EditorStateManager.getCurrent();
         if (state != null) state.markDirty();
+    }
+
+    @Override
+    public void refreshEditor() {
+        refreshTimeline();
+    }
+
+    @Override
+    public void close() {
+        // Adapter is process-scoped; nothing retained beyond Flashback editor state.
     }
 
     public Optional<TargetReference> targetSelectedInFlashback() {

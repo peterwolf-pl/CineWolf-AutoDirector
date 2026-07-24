@@ -137,6 +137,9 @@ Explicit CineWolf undo is allowed only while the editor state, scene, modificati
 - `ReplayEventDetector` adds deterministic detectors.
 - `ReplayEventScorer` replaces or extends ranking policy.
 - `MontagePresetRegistry` accepts future validated local presets.
-- `ReplayEditorAdapter` isolates Flashback and a future ReplayMod backend.
+- `ReplayEditorAdapter` isolates Flashback internals from CineWolf core (Flashback-only; no multi-editor backends).
+- `pl.peterwolf.cinewolf.api.v2` is the stable third-party integration surface.
 - `CollisionResolver` isolates world-specific camera clearance.
-- `CineWolfProfileProvider` reserves optional PeterWolf ecosystem profiles without hard dependencies.
+- Soft vehicle providers (`vehicle.integration`) recognize optional PeterWolf ecosystem entities without hard dependencies.
+- Montage Engine 2.0 (`montage.v2`) wraps the deterministic planner with style, narrative, diversity, and vehicle awareness.
+- Project schema v2 (`project.v2`) binds cinematic projects to stable replay identities with migration/autosave/recovery.
