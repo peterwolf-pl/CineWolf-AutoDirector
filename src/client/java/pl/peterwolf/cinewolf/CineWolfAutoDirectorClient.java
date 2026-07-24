@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.peterwolf.cinewolf.camera.CameraPathPlanner;
+import pl.peterwolf.cinewolf.clip.OcclusionClipController;
 import pl.peterwolf.cinewolf.config.CineWolfConfigManager;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackCompatibility;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
@@ -45,6 +46,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
         }
 
         FlashbackReplayEditorAdapter adapter = new FlashbackReplayEditorAdapter(LOGGER);
+        OcclusionClipController.get().bindConfig(configManager.get());
         previewRenderer = new CameraPathPreviewRenderer(adapter);
         previewRenderer.register();
         previewRenderer.setVisible(configManager.get().previewVisible
@@ -62,12 +64,18 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
             if (!adapter.isReplayEditorOpen() && verticalSafeAreaOverlay != null) {
                 verticalSafeAreaOverlay.hide();
             }
+            if (adapter.isReplayEditorOpen()) {
+                OcclusionClipController.get().tick();
+            } else {
+                OcclusionClipController.get().clear();
+            }
             previewController.tick();
             montageAnalysisController.tick();
             montageGenerationController.tick();
             montagePreviewController.tick();
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            OcclusionClipController.get().clear();
             previewController.close();
             montageAnalysisController.close();
             montageGenerationController.close();

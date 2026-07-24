@@ -53,6 +53,75 @@ public final class DefaultMontagePlanner implements MontagePlanner {
             warnings.add(MontageWarning.warning("montage.warning.flashback_requires_chronological_source"));
         }
 
+        List<ReplaySourceSegment> segments = request.resolvedSourceSegments();
+        if (segments.size() > 1) {
+            warnings.add(MontageWarning.warning("montage.warning.multi_source_segments", segments.size()));
+            return createMultiSegmentPlan(analysis, request, context, target, segments, warnings);
+        }
+        return createContinuousPlan(analysis, request, context, target, warnings);
+    }
+
+    private MontagePlan createMultiSegmentPlan(ReplayAnalysisResult analysis, MontageRequest request,
+                                               MontagePlanningContext context, TargetReference target,
+                                               List<ReplaySourceSegment> segments,
+                                               List<MontageWarning> warnings) {
+        long totalSourceTicks = Math.max(1L, ReplaySourceSegment.totalDurationTicks(segments));
+        int totalOutputTicks = Math.max(1, (int) Math.round(request.outputDurationSeconds() * 20.0));
+        int[] segmentOutputTicks = allocateSegmentOutputTicks(segments, totalSourceTicks, totalOutputTicks);
+
+        List<PlannedMontageShot> shots = new ArrayList<>();
+        double outputCursor = 0.0;
+        int globalIndex = 0;
+        ShotType previousType = null;
+        for (int segmentIndex = 0; segmentIndex < segments.size(); segmentIndex++) {
+            ReplaySourceSegment segment = segments.get(segmentIndex);
+            double segmentOutput = segmentOutputTicks[segmentIndex] / 20.0;
+            if (segmentOutput <= 0.0) continue;
+            MontageRequest segmentRequest = request
+                    .withSourceBounds(segment.startTick(), segment.endTick())
+                    .withOutputDuration(segmentOutput)
+                    .withShotDurations(
+                            Math.min(request.minimumShotDuration(), segmentOutput),
+                            Math.max(Math.min(request.minimumShotDuration(), segmentOutput),
+                                    Math.min(request.maximumShotDuration(), segmentOutput)));
+            List<ScoredReplayEvent> segmentCandidates = candidates(analysis, segmentRequest, target);
+            if (segmentCandidates.isEmpty()) {
+                warnings.add(MontageWarning.warning("montage.warning.segment_without_events",
+                        segmentIndex + 1, segment.label().isBlank() ? (segmentIndex + 1) : segment.label()));
+                continue;
+            }
+            ContinuousLayout layout;
+            try {
+                layout = continuousLayout(segmentCandidates, segmentRequest);
+            } catch (IllegalArgumentException exception) {
+                warnings.add(MontageWarning.warning("montage.warning.segment_layout_failed",
+                        segmentIndex + 1, exception.getMessage()));
+                continue;
+            }
+            List<ScoredReplayEvent> selected = layout.events();
+            long[] sourceBoundaries = layout.sourceBoundaries();
+            int[] outputTicks = layout.outputTicks();
+            for (int index = 0; index < selected.size(); index++) {
+                PlannedMontageShot shot = buildShot(selected.get(index), sourceBoundaries[index],
+                        sourceBoundaries[index + 1], outputTicks[index] / 20.0, outputCursor, globalIndex,
+                        selected.size(), previousType, target, analysis, segmentRequest, context, warnings);
+                shots.add(shot);
+                outputCursor += shot.outputDurationSeconds();
+                previousType = shot.shotType();
+                globalIndex++;
+            }
+        }
+        if (shots.isEmpty()) {
+            throw new IllegalArgumentException("No detected replay events can be planned across source segments");
+        }
+        // Re-index and pack output times to remove unused bridge ticks when some segments failed.
+        List<PlannedMontageShot> packed = packShotsWithSegmentBridges(shots);
+        return finalizePlan(request, context, packed, warnings);
+    }
+
+    private MontagePlan createContinuousPlan(ReplayAnalysisResult analysis, MontageRequest request,
+                                             MontagePlanningContext context, TargetReference target,
+                                             List<MontageWarning> warnings) {
         List<ScoredReplayEvent> candidates = candidates(analysis, request, target);
         if (candidates.isEmpty()) throw new IllegalArgumentException("No detected replay events can be planned");
         ContinuousLayout layout = continuousLayout(candidates, request);
@@ -68,48 +137,63 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         double outputCursor = 0.0;
         ShotType previousType = null;
         for (int index = 0; index < shotCount; index++) {
-            ScoredReplayEvent scored = selected.get(index);
-            ReplayEvent event = scored.event();
-            SourceInterval interval = new SourceInterval(sourceBoundaries[index], sourceBoundaries[index + 1]);
-            double duration = outputTicks[index] / 20.0;
-            double actualSpeed = ((interval.end - interval.start) / 20.0) / duration;
-            FramingType framing = framing(event.type(), index, shotCount);
-            ShotTypeSelection typeSelection = chooseShotType(event.type(), index, shotCount, previousType,
-                    request, context);
-            ShotType type = typeSelection.selected();
-            ShotRequest shotRequest = templateResolver.createShotRequest(event, target, type, framing,
-                    interval.start, interval.end, duration, request.cameraMovementIntensity(), index,
-                    analysis, request, context);
-            List<String> reasons = new ArrayList<>();
-            reasons.add(index == 0 ? "montage.reason.introduction" : index == shotCount - 1
-                    ? "montage.reason.outro" : "montage.reason.event_match");
-            reasons.add("montage.reason.event." + event.type().name().toLowerCase(java.util.Locale.ROOT));
-            reasons.addAll(scored.scoringReasons());
-            if (typeSelection.fallback()) {
-                reasons.add("montage.reason.shot_fallback;requested=" + shotTranslationKey(typeSelection.requested())
-                        + ";chosen=" + shotTranslationKey(typeSelection.selected()));
-            }
-            if (event.peakReplayTime() < interval.start || event.peakReplayTime() > interval.end) {
-                reasons.add("montage.reason.event_lead_in_or_out");
-            }
-            UUID shotId = UUID.nameUUIDFromBytes((event.eventId() + ":" + index + ":" + type)
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            List<MontageWarning> shotWarnings = new ArrayList<>();
-            if (request.aspectRatio() == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16
-                    && (framing == FramingType.EXTREME_WIDE || type == ShotType.FLYBY)) {
-                shotWarnings.add(MontageWarning.warning("montage.warning.vertical_framing_risk"));
-            }
-            shots.add(new PlannedMontageShot(shotId, index, event, scored.finalScore(), target, type, framing,
-                    interval.start, interval.end, outputCursor, duration, actualSpeed, shotRequest,
-                    true, false, reasons, shotWarnings));
-            outputCursor += duration;
-            previousType = type;
+            PlannedMontageShot shot = buildShot(selected.get(index), sourceBoundaries[index],
+                    sourceBoundaries[index + 1], outputTicks[index] / 20.0, outputCursor, index, shotCount,
+                    previousType, target, analysis, request, context, warnings);
+            shots.add(shot);
+            outputCursor += shot.outputDurationSeconds();
+            previousType = shot.shotType();
         }
+        return finalizePlan(request, context, shots, warnings);
+    }
 
+    private PlannedMontageShot buildShot(ScoredReplayEvent scored, long sourceStart, long sourceEnd,
+                                         double duration, double outputCursor, int index, int shotCount,
+                                         ShotType previousType, TargetReference target,
+                                         ReplayAnalysisResult analysis, MontageRequest request,
+                                         MontagePlanningContext context, List<MontageWarning> warnings) {
+        ReplayEvent event = scored.event();
+        SourceInterval interval = new SourceInterval(sourceStart, sourceEnd);
+        double actualSpeed = ((interval.end - interval.start) / 20.0) / duration;
+        FramingType framing = framing(event.type(), index, shotCount);
+        ShotTypeSelection typeSelection = chooseShotType(event.type(), index, shotCount, previousType,
+                request, context);
+        ShotType type = typeSelection.selected();
+        ShotRequest shotRequest = templateResolver.createShotRequest(event, target, type, framing,
+                interval.start, interval.end, duration, request.cameraMovementIntensity(), index,
+                analysis, request, context);
+        List<String> reasons = new ArrayList<>();
+        reasons.add(index == 0 ? "montage.reason.introduction" : index == shotCount - 1
+                ? "montage.reason.outro" : "montage.reason.event_match");
+        reasons.add("montage.reason.event." + event.type().name().toLowerCase(java.util.Locale.ROOT));
+        reasons.addAll(scored.scoringReasons());
+        if (typeSelection.fallback()) {
+            reasons.add("montage.reason.shot_fallback;requested=" + shotTranslationKey(typeSelection.requested())
+                    + ";chosen=" + shotTranslationKey(typeSelection.selected()));
+        }
+        if (event.peakReplayTime() < interval.start || event.peakReplayTime() > interval.end) {
+            reasons.add("montage.reason.event_lead_in_or_out");
+        }
+        UUID shotId = UUID.nameUUIDFromBytes((event.eventId() + ":" + index + ":" + type)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        List<MontageWarning> shotWarnings = new ArrayList<>();
+        if (request.aspectRatio() == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16
+                && (framing == FramingType.EXTREME_WIDE || type == ShotType.FLYBY)) {
+            shotWarnings.add(MontageWarning.warning("montage.warning.vertical_framing_risk"));
+        }
+        return new PlannedMontageShot(shotId, index, event, scored.finalScore(), target, type, framing,
+                interval.start, interval.end, outputCursor, duration, actualSpeed, shotRequest,
+                true, false, reasons, shotWarnings);
+    }
+
+    private MontagePlan finalizePlan(MontageRequest request, MontagePlanningContext context,
+                                     List<PlannedMontageShot> shots, List<MontageWarning> warnings) {
         List<MontageTransition> transitions = transitions(shots);
         List<MontageTimeMapping> mappings = shots.stream().map(PlannedMontageShot::timeMapping).toList();
+        double actualOutput = shots.isEmpty() ? request.outputDurationSeconds()
+                : shots.getLast().outputEndSeconds();
         MontageTimeMappingValidator.ValidationResult validation = new MontageTimeMappingValidator().validate(
-                mappings, request.outputDurationSeconds(), request.minimumReplaySpeed(),
+                mappings, actualOutput, request.minimumReplaySpeed(),
                 request.maximumReplaySpeed(), request.maximumReplaySpeedChange());
         if (!validation.valid()) {
             validation.errors().forEach(code -> warnings.add(new MontageWarning(code,
@@ -120,8 +204,52 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         MontagePlanStatistics statistics = statistics(shots, diversity);
         UUID montageId = stableMontageId(request, shots);
         return new MontagePlan(montageId, request.preset(), request.sourceStartReplayTime(),
-                request.sourceEndReplayTime(), request.outputDurationSeconds(), shots, transitions, mappings,
+                request.sourceEndReplayTime(), actualOutput, shots, transitions, mappings,
                 statistics, warnings);
+    }
+
+    private static int[] allocateSegmentOutputTicks(List<ReplaySourceSegment> segments, long totalSourceTicks,
+                                                    int totalOutputTicks) {
+        int count = segments.size();
+        int[] output = new int[count];
+        int assigned = 0;
+        for (int index = 0; index < count; index++) {
+            if (index == count - 1) {
+                output[index] = Math.max(1, totalOutputTicks - assigned);
+            } else {
+                double share = segments.get(index).durationTicks() / (double) totalSourceTicks;
+                output[index] = Math.max(1, (int) Math.round(totalOutputTicks * share));
+                assigned += output[index];
+            }
+        }
+        // Keep the sum exact when intermediate rounding overshoots.
+        int sum = 0;
+        for (int value : output) sum += value;
+        if (sum != totalOutputTicks && count > 0) {
+            output[count - 1] = Math.max(1, output[count - 1] + (totalOutputTicks - sum));
+        }
+        return output;
+    }
+
+    /**
+     * Rebuilds order indices and inserts a single-output-tick gap between shots that jump in source time,
+     * so Timelapse can bridge multi-region cuts without overlapping output.
+     */
+    private static List<PlannedMontageShot> packShotsWithSegmentBridges(List<PlannedMontageShot> shots) {
+        if (shots.isEmpty()) return List.of();
+        List<PlannedMontageShot> result = new ArrayList<>(shots.size());
+        double cursor = 0.0;
+        PlannedMontageShot previous = null;
+        for (int index = 0; index < shots.size(); index++) {
+            PlannedMontageShot shot = shots.get(index);
+            if (previous != null && shot.sourceReplayStartTime() > previous.sourceReplayEndTime()) {
+                cursor += 1.0 / 20.0;
+            }
+            result.add(shot.withOrderAndOutput(index, cursor));
+            cursor += shot.outputDurationSeconds();
+            previous = shot;
+        }
+        return List.copyOf(result);
     }
 
     /**
@@ -132,7 +260,7 @@ public final class DefaultMontagePlanner implements MontagePlanner {
      */
     private static MontageRequest fitOutputDurationToSource(MontageRequest request,
                                                              List<MontageWarning> warnings) {
-        long sourceTicks = request.sourceEndReplayTime() - request.sourceStartReplayTime();
+        long sourceTicks = request.totalSourceDurationTicks();
         double minimumSpeed = request.allowReplaySpeedChanges() ? request.minimumReplaySpeed() : 1.0;
         long maximumOutputTicks = (long) Math.floor(sourceTicks / minimumSpeed + 1.0e-9);
         long requestedOutputTicks = Math.max(1L, Math.round(request.outputDurationSeconds() * 20.0));
@@ -146,13 +274,9 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         warnings.add(MontageWarning.warning("montage.warning.output_shortened_to_source",
                 seconds(request.outputDurationSeconds()), seconds(fittedOutputDuration)));
         double fittedMinimumShotDuration = Math.min(request.minimumShotDuration(), fittedOutputDuration);
-        return new MontageRequest(request.preset(), request.sourceStartReplayTime(), request.sourceEndReplayTime(),
-                fittedOutputDuration, request.aspectRatio(), request.pacing(), request.mainTarget(),
-                request.automaticTargetDetection(), fittedMinimumShotDuration,
-                Math.max(fittedMinimumShotDuration, request.maximumShotDuration()),
-                request.cameraMovementIntensity(), request.cutFrequency(), request.allowReplaySpeedChanges(),
-                request.preferChronologicalOrder(), request.minimumReplaySpeed(), request.maximumReplaySpeed(),
-                request.maximumReplaySpeedChange(), request.maximumPlannedShots(), request.shotPreferences());
+        return request.withOutputDuration(fittedOutputDuration)
+                .withShotDurations(fittedMinimumShotDuration,
+                        Math.max(fittedMinimumShotDuration, request.maximumShotDuration()));
     }
 
     private static String seconds(double value) {

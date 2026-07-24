@@ -1,10 +1,14 @@
 package pl.peterwolf.cinewolf.config;
 
+import pl.peterwolf.cinewolf.montage.plan.ReplaySourceSegment;
 import pl.peterwolf.cinewolf.montage.preset.MontagePacing;
 import pl.peterwolf.cinewolf.montage.preset.MontagePreset;
 import pl.peterwolf.cinewolf.montage.preset.MontagePresetRegistry;
 import pl.peterwolf.cinewolf.montage.preset.MontagePresetType;
 import pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** Mutable, Gson-friendly user overrides for the data-driven montage presets. */
 public final class MontageConfig {
@@ -25,7 +29,13 @@ public final class MontageConfig {
     public boolean includeFlight = true;
     public boolean allowReplaySpeedChanges = false;
     public boolean preferChronologicalOrder = true;
+    /** @deprecated Prefer {@link #obstacleHandling}; kept for config migration. */
+    @Deprecated
     public boolean collisionAvoidance = true;
+    /** AVOID = move camera; CLIP = hide occluders; NONE = neither. */
+    public String obstacleHandling = ObstacleHandlingMode.AVOID.name();
+    /** When CLIP is active, also hide entities that sit on the camera→subject ray. */
+    public boolean clipEntities = true;
     public int coarseSamplesPerSecond = 4;
     public int detailedSamplesPerSecond = 16;
     public int maximumTrackedEntities = 16;
@@ -43,6 +53,11 @@ public final class MontageConfig {
     public EventScoringConfig eventScoring = new EventScoringConfig();
     public ShotDiversityConfig shotDiversity = new ShotDiversityConfig();
     public MontageShotSettings shotSettings = new MontageShotSettings();
+    /**
+     * Optional discontinuous source windows (e.g. 10s start + 10s middle + 10s end).
+     * Empty means "use the single Flashback In/Out selection".
+     */
+    public List<SourceSegmentConfig> sourceSegments = new ArrayList<>();
 
     public void applyPreset(MontagePreset preset) {
         outputDurationSeconds = preset.targetDurationSeconds();
@@ -86,14 +101,69 @@ public final class MontageConfig {
         maximumReplaySpeedChange = clamp(maximumReplaySpeedChange,
                 preset.style().maximumReplaySpeedChange(), 0.0, 20.0);
         verticalSafeArea = clamp(verticalSafeArea, 0.82, 0.5, 0.98);
+        ObstacleHandlingMode mode = ObstacleHandlingMode.parse(obstacleHandling, null);
+        if (mode == null) {
+            mode = ObstacleHandlingMode.fromLegacy(collisionAvoidance);
+        }
+        obstacleHandling = mode.name();
+        // Keep legacy boolean in sync for any external readers / older UI paths.
+        collisionAvoidance = mode.adjustsCameraPath();
         if (detectorThresholds == null) detectorThresholds = new DetectorThresholdConfig();
         if (eventScoring == null) eventScoring = new EventScoringConfig();
         if (shotDiversity == null) shotDiversity = new ShotDiversityConfig();
         if (shotSettings == null) shotSettings = new MontageShotSettings();
+        if (sourceSegments == null) sourceSegments = new ArrayList<>();
+        sourceSegments.removeIf(segment -> segment == null);
+        sourceSegments.forEach(SourceSegmentConfig::normalize);
         detectorThresholds.normalize();
         eventScoring.normalize();
         shotDiversity.normalize();
         shotSettings.normalize();
+    }
+
+    public ObstacleHandlingMode obstacleHandling() {
+        return ObstacleHandlingMode.parse(obstacleHandling, ObstacleHandlingMode.AVOID);
+    }
+
+    public void setObstacleHandling(ObstacleHandlingMode mode) {
+        ObstacleHandlingMode resolved = mode == null ? ObstacleHandlingMode.AVOID : mode;
+        obstacleHandling = resolved.name();
+        collisionAvoidance = resolved.adjustsCameraPath();
+    }
+
+    /** Normalized multi-region source windows, or empty when the Flashback selection should be used. */
+    public List<ReplaySourceSegment> resolvedSourceSegments() {
+        normalize();
+        if (sourceSegments.isEmpty()) return List.of();
+        List<ReplaySourceSegment> models = new ArrayList<>(sourceSegments.size());
+        for (SourceSegmentConfig segment : sourceSegments) {
+            try {
+                models.add(segment.toModel());
+            } catch (RuntimeException ignored) {
+                // Drop invalid persisted segments rather than failing config load.
+            }
+        }
+        return ReplaySourceSegment.normalize(models);
+    }
+
+    public void setSourceSegments(List<ReplaySourceSegment> segments) {
+        sourceSegments = new ArrayList<>();
+        if (segments == null) return;
+        for (ReplaySourceSegment segment : ReplaySourceSegment.normalize(segments)) {
+            sourceSegments.add(SourceSegmentConfig.from(segment));
+        }
+    }
+
+    public void clearSourceSegments() {
+        sourceSegments = new ArrayList<>();
+    }
+
+    public void addSourceSegment(long startTick, long endTick, String label) {
+        if (sourceSegments == null) sourceSegments = new ArrayList<>();
+        SourceSegmentConfig segment = new SourceSegmentConfig(startTick, endTick, label);
+        segment.normalize();
+        sourceSegments.add(segment);
+        normalize();
     }
 
     private static double positiveOr(double value, double fallback, double minimum, double maximum) {

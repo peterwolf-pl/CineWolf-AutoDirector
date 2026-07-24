@@ -141,7 +141,7 @@ public final class MontageGenerationController implements AutoCloseable {
     private void acceptGeneratedPaths(GenerationJob current, List<GeneratedPath> paths) {
         if (current.id != generations.get() || job != current || !adapter.isReplayEditorOpen()) return;
         current.generated = paths;
-        if (!config.montage.collisionAvoidance) {
+        if (!config.montage.obstacleHandling().adjustsCameraPath()) {
             finish(current, paths);
             return;
         }

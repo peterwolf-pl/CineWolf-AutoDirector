@@ -136,11 +136,17 @@ public final class MontageTimelinePlanBuilder {
                     errors.add("montage.timeline.mapping_must_start_at_zero");
                 }
             } else {
-                if (Math.abs(mapping.outputStartSeconds() - previousMapping.outputEndSeconds()) > TIME_EPSILON) {
-                    errors.add("montage.timeline.mapping_output_not_contiguous");
+                if (mapping.outputStartSeconds() + TIME_EPSILON < previousMapping.outputEndSeconds()) {
+                    errors.add("montage.timeline.mapping_output_overlap");
+                } else if (mapping.outputStartSeconds() - previousMapping.outputEndSeconds()
+                        > 1.0 / TICKS_PER_SECOND + TIME_EPSILON) {
+                    warnings.add("montage.timeline.mapping_output_gap");
                 }
-                if (mapping.replayStartTime() != previousMapping.replayEndTime()) {
-                    errors.add("montage.timeline.source_cut_not_supported");
+                if (mapping.replayStartTime() < previousMapping.replayEndTime()) {
+                    errors.add("montage.timeline.source_overlap");
+                } else if (mapping.replayStartTime() > previousMapping.replayEndTime()) {
+                    // Flashback cannot hard-cut source time in zero ticks; bridge with ≥1 output tick.
+                    warnings.add("montage.timeline.source_cut_bridged");
                 }
             }
             addTimelapsePoint(timelapse, mapping.replayStartTime(), mapping.outputStartSeconds(), errors);
@@ -148,13 +154,7 @@ public final class MontageTimelinePlanBuilder {
             previousMapping = mapping;
         }
 
-        int previousOutputElapsed = -1;
-        for (MontageTimelineWritePlan.TimelapsePoint point : timelapse.values()) {
-            if (previousOutputElapsed >= 0 && point.outputElapsedTick() <= previousOutputElapsed) {
-                errors.add("montage.timeline.output_not_strictly_increasing");
-            }
-            previousOutputElapsed = point.outputElapsedTick();
-        }
+        ensureStrictlyIncreasingOutput(timelapse, warnings, errors);
         if (timelapse.size() < 2) errors.add("montage.timeline.timelapse_requires_two_points");
 
         double outputDuration = mappings.isEmpty() ? 0.0 : mappings.getLast().outputEndSeconds();
@@ -266,6 +266,36 @@ public final class MontageTimelinePlanBuilder {
             return;
         }
         points.put(sourceTick, new MontageTimelineWritePlan.TimelapsePoint(sourceTick, outputElapsedTick));
+    }
+
+    /**
+     * Flashback Timelapse requires strictly increasing output elapsed values as source ticks advance.
+     * Continuous mappings already satisfy this; multi-region source cuts may share the same output endpoint,
+     * so bump later points by the minimum number of ticks needed to restore a strict increase.
+     */
+    private static void ensureStrictlyIncreasingOutput(
+            TreeMap<Integer, MontageTimelineWritePlan.TimelapsePoint> timelapse,
+            List<String> warnings, List<String> errors) {
+        int previousOutputElapsed = -1;
+        boolean bridged = false;
+        TreeMap<Integer, MontageTimelineWritePlan.TimelapsePoint> fixed = new TreeMap<>();
+        for (MontageTimelineWritePlan.TimelapsePoint point : timelapse.values()) {
+            int output = point.outputElapsedTick();
+            if (previousOutputElapsed >= 0 && output <= previousOutputElapsed) {
+                output = previousOutputElapsed + 1;
+                bridged = true;
+                if (output < 0) {
+                    errors.add("montage.timeline.output_time_out_of_range");
+                    return;
+                }
+            }
+            fixed.put(point.timelineTick(),
+                    new MontageTimelineWritePlan.TimelapsePoint(point.timelineTick(), output));
+            previousOutputElapsed = output;
+        }
+        timelapse.clear();
+        timelapse.putAll(fixed);
+        if (bridged) warnings.add("montage.timeline.source_cut_bridged");
     }
 
     private static Integer outputElapsedTick(double outputSeconds, List<String> errors) {

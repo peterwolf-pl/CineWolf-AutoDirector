@@ -8,9 +8,11 @@ import imgui.moulberry90.type.ImInt;
 import net.minecraft.client.resources.language.I18n;
 import org.slf4j.Logger;
 import pl.peterwolf.cinewolf.api.ReplayEditorAdapter;
+import pl.peterwolf.cinewolf.clip.OcclusionClipController;
 import pl.peterwolf.cinewolf.config.CineWolfConfig;
 import pl.peterwolf.cinewolf.config.CineWolfConfigManager;
 import pl.peterwolf.cinewolf.config.MontageConfig;
+import pl.peterwolf.cinewolf.config.ObstacleHandlingMode;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackMontageTimelineWriter;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.model.EasingType;
@@ -28,6 +30,8 @@ import pl.peterwolf.cinewolf.montage.plan.MontagePlan;
 import pl.peterwolf.cinewolf.montage.plan.MontagePlanEditor;
 import pl.peterwolf.cinewolf.montage.plan.MontageWarning;
 import pl.peterwolf.cinewolf.montage.plan.PlannedMontageShot;
+import pl.peterwolf.cinewolf.montage.plan.ReplaySourceSegment;
+import pl.peterwolf.cinewolf.config.SourceSegmentConfig;
 import pl.peterwolf.cinewolf.montage.preset.MontagePacing;
 import pl.peterwolf.cinewolf.montage.preset.MontagePreset;
 import pl.peterwolf.cinewolf.montage.preset.MontagePresetRegistry;
@@ -97,6 +101,7 @@ public final class GenerateMontagePanel {
     }
 
     public void render(TargetReference sharedTarget, List<ReplayEditorAdapter.ReplayEntityDescriptor> entities) {
+        OcclusionClipController.get().setPreferredSubject(sharedTarget);
         invalidateChangedScope(sharedTarget);
         processDeferredActions(sharedTarget);
         renderRange();
@@ -122,8 +127,16 @@ public final class GenerateMontagePanel {
                 .map(TargetReference::uuid).collect(java.util.stream.Collectors.toSet());
         java.util.Set<UUID> currentTargets = sharedTarget == null ? java.util.Set.of()
                 : java.util.Set.of(sharedTarget.uuid());
-        boolean changed = !range.selected() || range.startTick() != request.startReplayTime()
-                || range.endTick() != request.endReplayTime() || !requestedTargets.equals(currentTargets);
+        List<ReplaySourceSegment> configured = config.montage.resolvedSourceSegments();
+        List<ReplaySourceSegment> analyzed = request.resolvedSourceSegments();
+        boolean rangeChanged;
+        if (!configured.isEmpty()) {
+            rangeChanged = !configured.equals(analyzed);
+        } else {
+            rangeChanged = !range.selected() || range.startTick() != request.startReplayTime()
+                    || range.endTick() != request.endReplayTime();
+        }
+        boolean changed = rangeChanged || !requestedTargets.equals(currentTargets);
         if (!changed) return;
 
         manualEdits.clear();
@@ -139,12 +152,99 @@ public final class GenerateMontagePanel {
     private void renderRange() {
         ImGui.separatorText(tr("cinewolf.montage.section.range"));
         ReplayEditorAdapter.ReplayTimeRange range = adapter.getSelectedTimeRange();
-        if (!range.selected()) {
-            ImGui.textColored(255, 100, 100, 255, tr("cinewolf.montage.range.required"));
+        List<ReplaySourceSegment> segments = config.montage.resolvedSourceSegments();
+        if (segments.isEmpty()) {
+            if (!range.selected()) {
+                ImGui.textColored(255, 100, 100, 255, tr("cinewolf.montage.range.required"));
+            } else {
+                ImGui.textUnformatted(tr("cinewolf.montage.range.value", timestamp(range.startTick()),
+                        timestamp(range.endTick()), format((range.endTick() - range.startTick()) / 20.0)));
+            }
+        } else {
+            long totalTicks = ReplaySourceSegment.totalDurationTicks(segments);
+            ImGui.textUnformatted(tr("cinewolf.montage.range.segments_summary", segments.size(),
+                    format(totalTicks / 20.0), format(config.montage.outputDurationSeconds)));
+        }
+
+        ImGui.separatorText(tr("cinewolf.montage.section.source_segments"));
+        ImGui.textWrapped(tr("cinewolf.montage.source_segments.help"));
+        if (range.selected()) {
+            if (ImGui.button(tr("cinewolf.montage.action.add_selection_segment"))) {
+                config.montage.addSourceSegment(range.startTick(), range.endTick(),
+                        "sel-" + (config.montage.sourceSegments.size() + 1));
+                settingsChanged();
+            }
+            tooltip(tr("cinewolf.montage.tooltip.add_selection_segment"));
+            ImGui.sameLine();
+        }
+        if (ImGui.button(tr("cinewolf.montage.action.suggest_thirds"))) {
+            suggestThirdsSegments(range);
+            settingsChanged();
+        }
+        tooltip(tr("cinewolf.montage.tooltip.suggest_thirds"));
+        ImGui.sameLine();
+        if (ImGui.button(tr("cinewolf.montage.action.clear_segments"))) {
+            config.montage.clearSourceSegments();
+            settingsChanged();
+        }
+        tooltip(tr("cinewolf.montage.tooltip.clear_segments"));
+
+        if (config.montage.sourceSegments == null || config.montage.sourceSegments.isEmpty()) {
+            ImGui.textDisabled(tr("cinewolf.montage.source_segments.empty"));
             return;
         }
-        ImGui.textUnformatted(tr("cinewolf.montage.range.value", timestamp(range.startTick()),
-                timestamp(range.endTick()), format((range.endTick() - range.startTick()) / 20.0)));
+        int removeIndex = -1;
+        for (int index = 0; index < config.montage.sourceSegments.size(); index++) {
+            SourceSegmentConfig segment = config.montage.sourceSegments.get(index);
+            ImGui.pushID(index);
+            ImGui.textUnformatted(tr("cinewolf.montage.source_segments.row",
+                    index + 1,
+                    timestamp(segment.startTick),
+                    timestamp(segment.endTick),
+                    format((segment.endTick - segment.startTick) / 20.0),
+                    segment.label == null || segment.label.isBlank() ? "-" : segment.label));
+            ImGui.sameLine();
+            if (ImGui.button(tr("cinewolf.montage.action.seek_segment") + "##seek-" + index)) {
+                adapter.setReplayPaused(true);
+                adapter.goToReplayTick(segment.startTick);
+            }
+            tooltip(tr("cinewolf.montage.tooltip.seek_segment"));
+            ImGui.sameLine();
+            if (ImGui.button(tr("cinewolf.montage.action.remove_segment") + "##rm-" + index)) {
+                removeIndex = index;
+            }
+            tooltip(tr("cinewolf.montage.tooltip.remove_segment"));
+            ImGui.popID();
+        }
+        if (removeIndex >= 0) {
+            config.montage.sourceSegments.remove(removeIndex);
+            settingsChanged();
+        }
+    }
+
+    private void suggestThirdsSegments(ReplayEditorAdapter.ReplayTimeRange range) {
+        long start;
+        long end;
+        if (range.selected()) {
+            start = range.startTick();
+            end = range.endTick();
+        } else {
+            start = 0L;
+            long total = adapter.getTotalReplayTime();
+            end = total > 0 ? total : Math.max(start + 1L, adapter.getCurrentReplayTime() + 600L);
+        }
+        long span = end - start;
+        if (span < 60L) return;
+        // Each region lasts one third of the configured output duration (e.g. 10s of a 30s montage).
+        long segmentTicks = Math.max(20L, Math.round(config.montage.outputDurationSeconds / 3.0 * 20.0));
+        segmentTicks = Math.min(segmentTicks, Math.max(20L, span / 3L));
+        long middleStart = start + Math.max(0L, (span - segmentTicks) / 2L);
+        long endStart = Math.max(start, end - segmentTicks);
+        List<ReplaySourceSegment> suggested = List.of(
+                new ReplaySourceSegment(start, start + segmentTicks, "start"),
+                new ReplaySourceSegment(middleStart, middleStart + segmentTicks, "middle"),
+                new ReplaySourceSegment(endStart, endStart + segmentTicks, "end"));
+        config.montage.setSourceSegments(suggested);
     }
 
     private void renderPresetAndOutput() {
@@ -244,9 +344,21 @@ public final class GenerateMontagePanel {
         changed |= toggle("cinewolf.montage.field.chronological", settings.preferChronologicalOrder,
                 "cinewolf.montage.tooltip.chronological",
                 value -> settings.preferChronologicalOrder = value);
-        changed |= toggle("cinewolf.montage.field.collision", settings.collisionAvoidance,
-                "cinewolf.montage.tooltip.collision",
-                value -> settings.collisionAvoidance = value);
+        ObstacleHandlingMode[] modes = ObstacleHandlingMode.values();
+        ObstacleHandlingMode currentMode = settings.obstacleHandling();
+        comboValue.set(currentMode.ordinal());
+        if (ImGui.combo(tr("cinewolf.montage.field.obstacle_handling"), comboValue,
+                Arrays.stream(modes).map(mode -> tr("cinewolf.montage.obstacle."
+                        + mode.name().toLowerCase(Locale.ROOT))).toArray(String[]::new))) {
+            settings.setObstacleHandling(modes[comboValue.get()]);
+            changed = true;
+        }
+        tooltip(tr("cinewolf.montage.tooltip.obstacle_handling"));
+        if (settings.obstacleHandling().clipsOccluders()) {
+            changed |= toggle("cinewolf.montage.field.clip_entities", settings.clipEntities,
+                    "cinewolf.montage.tooltip.clip_entities",
+                    value -> settings.clipEntities = value);
+        }
 
         renderPathSmoothingFields();
 
@@ -357,6 +469,14 @@ public final class GenerateMontagePanel {
                 config.pathSmoothing.windowSeconds, 0.05, 0.05, 2.0,
                 tr("cinewolf.tooltip.smoothing_window"), smoothingTooltipFlags,
                 value -> config.pathSmoothing.windowSeconds = value);
+        changed |= number(tr("cinewolf.field.target_smoothing_strength") + "###montage-target-smoothing",
+                config.pathSmoothing.targetStrength, 0.05, 0.0, 1.0,
+                tr("cinewolf.tooltip.target_smoothing_strength"), smoothingTooltipFlags,
+                value -> config.pathSmoothing.targetStrength = value);
+        changed |= number(tr("cinewolf.field.target_smoothing_window") + "###montage-target-window",
+                config.pathSmoothing.targetWindowSeconds, 0.05, 0.05, 2.0,
+                tr("cinewolf.tooltip.target_smoothing_window"), smoothingTooltipFlags,
+                value -> config.pathSmoothing.targetWindowSeconds = value);
 
         boolean rejectOutliers = config.pathSmoothing.outlierRejection;
         if (ImGui.checkbox(tr("cinewolf.field.outlier_rejection") + "###montage-outlier-rejection",
@@ -365,6 +485,13 @@ public final class GenerateMontagePanel {
             changed = true;
         }
         tooltip(tr("cinewolf.tooltip.outlier_rejection"), smoothingTooltipFlags);
+        boolean rejectTargetOutliers = config.pathSmoothing.targetOutlierRejection;
+        if (ImGui.checkbox(tr("cinewolf.field.target_outlier_rejection") + "###montage-target-outlier",
+                rejectTargetOutliers)) {
+            config.pathSmoothing.targetOutlierRejection = !rejectTargetOutliers;
+            changed = true;
+        }
+        tooltip(tr("cinewolf.tooltip.target_outlier_rejection"), smoothingTooltipFlags);
         if (smoothingDisabled) ImGui.endDisabled();
 
         boolean outlierFieldsDisabled = smoothingDisabled || !config.pathSmoothing.outlierRejection;
@@ -623,6 +750,12 @@ public final class GenerateMontagePanel {
             editShotParameters(plan, shot);
             ImGui.treePop();
         }
+        if (ImGui.smallButton(tr("cinewolf.montage.shot.seek_source") + "###seek-src-" + shot.shotId())) {
+            adapter.setReplayPaused(true);
+            adapter.goToReplayTick(shot.sourceReplayStartTime());
+        }
+        tooltip(tr("cinewolf.montage.tooltip.shot_seek_source"));
+        ImGui.sameLine();
         if (!shot.enabled()) ImGui.beginDisabled();
         if (ImGui.smallButton(tr("cinewolf.montage.shot.preview") + "###preview-" + shot.shotId())) {
             requestShotPreview(plan, shot.shotId());

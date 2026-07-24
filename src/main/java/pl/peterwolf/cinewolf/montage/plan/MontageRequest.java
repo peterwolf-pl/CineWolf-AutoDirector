@@ -6,6 +6,7 @@ import pl.peterwolf.cinewolf.montage.preset.MontagePacing;
 import pl.peterwolf.cinewolf.montage.preset.MontagePreset;
 import pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -28,7 +29,8 @@ public record MontageRequest(
         double maximumReplaySpeed,
         double maximumReplaySpeedChange,
         int maximumPlannedShots,
-        MontageShotPreferences shotPreferences
+        MontageShotPreferences shotPreferences,
+        List<ReplaySourceSegment> sourceSegments
 ) {
     public MontageRequest {
         Objects.requireNonNull(preset, "preset");
@@ -59,6 +61,37 @@ public record MontageRequest(
         }
         maximumPlannedShots = Math.max(1, maximumPlannedShots);
         shotPreferences = Objects.requireNonNullElse(shotPreferences, MontageShotPreferences.defaults());
+        sourceSegments = ReplaySourceSegment.normalize(
+                Objects.requireNonNullElse(sourceSegments, List.of()));
+    }
+
+    /** Compatibility constructor without explicit source segments. */
+    public MontageRequest(
+            MontagePreset preset,
+            long sourceStartReplayTime,
+            long sourceEndReplayTime,
+            double outputDurationSeconds,
+            OutputAspectRatio aspectRatio,
+            MontagePacing pacing,
+            Optional<TargetReference> mainTarget,
+            boolean automaticTargetDetection,
+            double minimumShotDuration,
+            double maximumShotDuration,
+            double cameraMovementIntensity,
+            double cutFrequency,
+            boolean allowReplaySpeedChanges,
+            boolean preferChronologicalOrder,
+            double minimumReplaySpeed,
+            double maximumReplaySpeed,
+            double maximumReplaySpeedChange,
+            int maximumPlannedShots,
+            MontageShotPreferences shotPreferences
+    ) {
+        this(preset, sourceStartReplayTime, sourceEndReplayTime, outputDurationSeconds, aspectRatio, pacing,
+                mainTarget, automaticTargetDetection, minimumShotDuration, maximumShotDuration,
+                cameraMovementIntensity, cutFrequency, allowReplaySpeedChanges, preferChronologicalOrder,
+                minimumReplaySpeed, maximumReplaySpeed, maximumReplaySpeedChange, maximumPlannedShots,
+                shotPreferences, List.of());
     }
 
     /** Compatibility constructor without explicit shot preferences. */
@@ -86,7 +119,7 @@ public record MontageRequest(
                 mainTarget, automaticTargetDetection, minimumShotDuration, maximumShotDuration,
                 cameraMovementIntensity, cutFrequency, allowReplaySpeedChanges, preferChronologicalOrder,
                 minimumReplaySpeed, maximumReplaySpeed, maximumReplaySpeedChange, maximumPlannedShots,
-                MontageShotPreferences.defaults());
+                MontageShotPreferences.defaults(), List.of());
     }
 
     public static MontageRequest fromPreset(MontagePreset preset, long sourceStart, long sourceEnd,
@@ -97,7 +130,61 @@ public record MontageRequest(
                 preset.style().allowReplaySpeedChanges(), preset.style().preferChronologicalOrder(),
                 preset.style().minimumReplaySpeed(), preset.style().maximumReplaySpeed(),
                 preset.style().maximumReplaySpeedChange(), preset.maximumShotCount(),
-                MontageShotPreferences.defaults());
+                MontageShotPreferences.defaults(), List.of());
+    }
+
+    /** Source windows used for analysis/planning (falls back to the continuous start/end range). */
+    public List<ReplaySourceSegment> resolvedSourceSegments() {
+        if (!sourceSegments.isEmpty()) return sourceSegments;
+        return List.of(ReplaySourceSegment.of(sourceStartReplayTime, sourceEndReplayTime));
+    }
+
+    public long totalSourceDurationTicks() {
+        return ReplaySourceSegment.totalDurationTicks(resolvedSourceSegments());
+    }
+
+    public boolean multiSegment() {
+        return resolvedSourceSegments().size() > 1;
+    }
+
+    public MontageRequest withOutputDuration(double durationSeconds) {
+        return new MontageRequest(preset, sourceStartReplayTime, sourceEndReplayTime, durationSeconds, aspectRatio,
+                pacing, mainTarget, automaticTargetDetection, minimumShotDuration, maximumShotDuration,
+                cameraMovementIntensity, cutFrequency, allowReplaySpeedChanges, preferChronologicalOrder,
+                minimumReplaySpeed, maximumReplaySpeed, maximumReplaySpeedChange, maximumPlannedShots,
+                shotPreferences, sourceSegments);
+    }
+
+    public MontageRequest withSourceBounds(long start, long end) {
+        return new MontageRequest(preset, start, end, outputDurationSeconds, aspectRatio, pacing, mainTarget,
+                automaticTargetDetection, minimumShotDuration, maximumShotDuration, cameraMovementIntensity,
+                cutFrequency, allowReplaySpeedChanges, preferChronologicalOrder, minimumReplaySpeed,
+                maximumReplaySpeed, maximumReplaySpeedChange, maximumPlannedShots, shotPreferences, List.of());
+    }
+
+    public MontageRequest withSourceSegments(List<ReplaySourceSegment> segments) {
+        List<ReplaySourceSegment> normalized = ReplaySourceSegment.normalize(segments);
+        if (normalized.isEmpty()) {
+            return new MontageRequest(preset, sourceStartReplayTime, sourceEndReplayTime, outputDurationSeconds,
+                    aspectRatio, pacing, mainTarget, automaticTargetDetection, minimumShotDuration,
+                    maximumShotDuration, cameraMovementIntensity, cutFrequency, allowReplaySpeedChanges,
+                    preferChronologicalOrder, minimumReplaySpeed, maximumReplaySpeed, maximumReplaySpeedChange,
+                    maximumPlannedShots, shotPreferences, List.of());
+        }
+        long start = normalized.getFirst().startTick();
+        long end = normalized.getLast().endTick();
+        return new MontageRequest(preset, start, end, outputDurationSeconds, aspectRatio, pacing, mainTarget,
+                automaticTargetDetection, minimumShotDuration, maximumShotDuration, cameraMovementIntensity,
+                cutFrequency, allowReplaySpeedChanges, preferChronologicalOrder, minimumReplaySpeed,
+                maximumReplaySpeed, maximumReplaySpeedChange, maximumPlannedShots, shotPreferences, normalized);
+    }
+
+    public MontageRequest withShotDurations(double minimum, double maximum) {
+        return new MontageRequest(preset, sourceStartReplayTime, sourceEndReplayTime, outputDurationSeconds,
+                aspectRatio, pacing, mainTarget, automaticTargetDetection, minimum, maximum,
+                cameraMovementIntensity, cutFrequency, allowReplaySpeedChanges, preferChronologicalOrder,
+                minimumReplaySpeed, maximumReplaySpeed, maximumReplaySpeedChange, maximumPlannedShots,
+                shotPreferences, sourceSegments);
     }
 
     private static double clamp01(double value) {

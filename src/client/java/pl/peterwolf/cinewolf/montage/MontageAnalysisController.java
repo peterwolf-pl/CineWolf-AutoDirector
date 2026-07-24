@@ -24,6 +24,7 @@ import pl.peterwolf.cinewolf.montage.plan.MontagePlan;
 import pl.peterwolf.cinewolf.montage.plan.MontagePlanEditor;
 import pl.peterwolf.cinewolf.montage.plan.MontagePlanningContext;
 import pl.peterwolf.cinewolf.montage.plan.MontageRequest;
+import pl.peterwolf.cinewolf.montage.plan.ReplaySourceSegment;
 import pl.peterwolf.cinewolf.montage.preset.MontagePreset;
 import pl.peterwolf.cinewolf.montage.preset.MontagePresetRegistry;
 import pl.peterwolf.cinewolf.shot.ShotGeneratorRegistry;
@@ -91,9 +92,16 @@ public final class MontageAnalysisController implements AutoCloseable {
         }
         if (!adapter.isReplayEditorOpen()) return reject("cinewolf.montage.error.open_replay");
         var range = adapter.getSelectedTimeRange();
-        if (!range.selected()) return reject("cinewolf.montage.error.select_range");
         MontageConfig settings = config.montage;
         settings.normalize();
+        List<ReplaySourceSegment> segments = settings.resolvedSourceSegments();
+        if (segments.isEmpty()) {
+            if (!range.selected()) return reject("cinewolf.montage.error.select_range");
+            segments = List.of(ReplaySourceSegment.of(range.startTick(), range.endTick()));
+        }
+        long analysisStart = segments.getFirst().startTick();
+        long analysisEnd = segments.getLast().endTick();
+        if (analysisEnd <= analysisStart) return reject("cinewolf.montage.error.sample_range_too_short");
         MontagePreset preset = presets.get(settings.presetType).orElseThrow();
         Set<TargetReference> selectedTargets = selectedTarget == null ? Set.of() : Set.of(selectedTarget);
         if (selectedTargets.isEmpty() && !settings.automaticTargetDetection) {
@@ -102,17 +110,19 @@ public final class MontageAnalysisController implements AutoCloseable {
 
         long id = generations.incrementAndGet();
         Set<ReplayEventType> enabledTypes = enabledTypes(settings);
-        ReplayAnalysisRequest request = new ReplayAnalysisRequest(range.startTick(), range.endTick(), selectedTargets,
+        ReplayAnalysisRequest request = new ReplayAnalysisRequest(analysisStart, analysisEnd, selectedTargets,
                 settings.automaticTargetDetection, enabledTypes, settings.eventSensitivity,
-                settings.coarseSamplesPerSecond, settings.detailedSamplesPerSecond);
+                settings.coarseSamplesPerSecond, settings.detailedSamplesPerSecond, segments);
         List<ReplayMarkerSnapshot> markers = settings.includeReplayMarkers
-                ? adapter.replayMarkers(range.startTick(), range.endTick()) : List.of();
+                ? adapter.replayMarkers(analysisStart, analysisEnd).stream()
+                .filter(marker -> request.contains(marker.replayTime())).toList()
+                : List.of();
         List<Long> ticks = coarseTicks(request, markers, settings.maximumTotalSamples);
         if (ticks.size() < 2) return reject("cinewolf.montage.error.sample_range_too_short");
 
         long restoreTick = adapter.getCurrentReplayTime();
         boolean restorePaused = adapter.replayPaused();
-        ReplayActionCapture.begin(id, range.startTick(), range.endTick());
+        ReplayActionCapture.begin(id, analysisStart, analysisEnd);
         adapter.setReplayPaused(true);
         job = new SamplingJob(id, request, preset, selectedTarget, markers, ticks, restoreTick, restorePaused);
         phase = Phase.COARSE_SAMPLING;
@@ -120,8 +130,8 @@ public final class MontageAnalysisController implements AutoCloseable {
         progress = 0.0f;
         setStatus("cinewolf.montage.status.coarse", 0, ticks.size());
         adapter.goToReplayTick(ticks.getFirst());
-        logger.info("CineWolf montage analysis started: replay={}, range={}..{}, coarseSamples={}, preset={}",
-                adapter.replayIdentifier(), range.startTick(), range.endTick(), ticks.size(), preset.id());
+        logger.info("CineWolf montage analysis started: replay={}, segments={}, range={}..{}, coarseSamples={}, preset={}",
+                adapter.replayIdentifier(), segments.size(), analysisStart, analysisEnd, ticks.size(), preset.id());
         return new StartResult(true, statusKey);
     }
 
@@ -470,13 +480,14 @@ public final class MontageAnalysisController implements AutoCloseable {
         MontageConfig settings = config.montage;
         settings.normalize();
         var registered = ShotGeneratorRegistry.createDefault().supportedTypes();
+        List<ReplaySourceSegment> segments = current.request.resolvedSourceSegments();
         return new MontageRequest(current.preset, current.request.startReplayTime(), current.request.endReplayTime(),
                 settings.outputDurationSeconds, settings.aspectRatio, settings.pacing,
                 java.util.Optional.ofNullable(current.selectedTarget), settings.automaticTargetDetection,
                 settings.minimumShotDuration, settings.maximumShotDuration, settings.cameraMovementIntensity,
                 settings.cutFrequency, settings.allowReplaySpeedChanges, settings.preferChronologicalOrder,
                 settings.minimumReplaySpeed, settings.maximumReplaySpeed, settings.maximumReplaySpeedChange,
-                settings.maximumPlannedShots, settings.shotSettings.toPreferences(registered));
+                settings.maximumPlannedShots, settings.shotSettings.toPreferences(registered), segments);
     }
 
     private static Set<ReplayEventType> enabledTypes(MontageConfig settings) {
@@ -497,12 +508,16 @@ public final class MontageAnalysisController implements AutoCloseable {
                                           int maximumSamples) {
         long interval = Math.max(1L, Math.round(20.0 / request.coarseSamplesPerSecond()));
         LinkedHashSet<Long> ticks = new LinkedHashSet<>();
-        for (long tick = request.startReplayTime(); tick <= request.endReplayTime(); tick += interval) {
-            ticks.add(tick);
-            if (tick > Long.MAX_VALUE - interval) break;
+        for (ReplaySourceSegment segment : request.resolvedSourceSegments()) {
+            for (long tick = segment.startTick(); tick <= segment.endTick(); tick += interval) {
+                ticks.add(tick);
+                if (tick > Long.MAX_VALUE - interval) break;
+            }
+            ticks.add(segment.endTick());
         }
-        ticks.add(request.endReplayTime());
-        markers.forEach(marker -> ticks.add(marker.replayTime()));
+        markers.forEach(marker -> {
+            if (request.contains(marker.replayTime())) ticks.add(marker.replayTime());
+        });
         return capEvenly(ticks.stream().sorted().toList(), maximumSamples);
     }
 
@@ -513,10 +528,12 @@ public final class MontageAnalysisController implements AutoCloseable {
         LinkedHashSet<Long> ticks = new LinkedHashSet<>();
         for (ReplayTimeWindow window : windows) {
             for (long tick = window.startReplayTime(); tick <= window.endReplayTime(); tick += interval) {
-                if (!alreadySampled.contains(tick)) ticks.add(tick);
+                if (request.contains(tick) && !alreadySampled.contains(tick)) ticks.add(tick);
                 if (tick > Long.MAX_VALUE - interval) break;
             }
-            if (!alreadySampled.contains(window.endReplayTime())) ticks.add(window.endReplayTime());
+            if (request.contains(window.endReplayTime()) && !alreadySampled.contains(window.endReplayTime())) {
+                ticks.add(window.endReplayTime());
+            }
         }
         return capEvenly(ticks.stream().sorted().toList(), maximumAdditional);
     }

@@ -62,6 +62,7 @@ public final class CameraPathSmoother {
         SegmentMap segments = SegmentMap.of(samples);
         double distanceThreshold = settings.outlierThresholdBlocks();
         double speedThreshold = settings.outlierSpeedThresholdBlocksPerSecond();
+        boolean rejectTarget = settings.targetOutlierRejection();
 
         for (int index = 1; index < samples.size() - 1; index++) {
             if (segments.isAnchor(index)) continue;
@@ -76,11 +77,16 @@ public final class CameraPathSmoother {
                             previous.cinematicTimeSeconds(), current.cinematicTimeSeconds(), next.cinematicTimeSeconds(),
                             distanceThreshold, speedThreshold)
                     : commonMode.position();
-            Vec3d lookAt = commonMode == null
-                    ? rejectVectorOutlier(previous.lookAtPoint(), current.lookAtPoint(), next.lookAtPoint(),
-                            previous.cinematicTimeSeconds(), current.cinematicTimeSeconds(), next.cinematicTimeSeconds(),
-                            distanceThreshold, speedThreshold)
-                    : commonMode.lookAtPoint();
+            Vec3d lookAt;
+            if (commonMode != null) {
+                lookAt = commonMode.lookAtPoint();
+            } else if (rejectTarget) {
+                lookAt = rejectVectorOutlier(previous.lookAtPoint(), current.lookAtPoint(), next.lookAtPoint(),
+                        previous.cinematicTimeSeconds(), current.cinematicTimeSeconds(), next.cinematicTimeSeconds(),
+                        distanceThreshold, speedThreshold);
+            } else {
+                lookAt = current.lookAtPoint();
+            }
             if (position == current.position() && lookAt == current.lookAtPoint()) continue;
 
             result.set(index, rebuild(current, position, lookAt,
@@ -160,7 +166,8 @@ public final class CameraPathSmoother {
                                       PathSmoothingSettings settings) {
         CameraSample current = samples.get(index);
         double centerTime = current.cinematicTimeSeconds();
-        double window = settings.windowSeconds();
+        double positionWindow = settings.windowSeconds();
+        double targetWindow = settings.targetWindowSeconds();
         int start = segments.start(index);
         int end = segments.end(index);
         WeightedVec3Regression lookAtRegression = new WeightedVec3Regression();
@@ -170,31 +177,46 @@ public final class CameraPathSmoother {
         Vec3d fallbackDirection = currentOffset.normalizeOr(new Vec3d(0.0, 0.0, 1.0));
         for (int neighbor = start; neighbor <= end; neighbor++) {
             CameraSample sample = samples.get(neighbor);
+            if (!sample.isFinite()) continue;
             double timeDistance = Math.abs(sample.cinematicTimeSeconds() - centerTime);
-            if (timeDistance > window || !sample.isFinite()) continue;
-            double weight = Math.max(0.0, 1.0 - timeDistance / window);
-            if (weight <= 0.0) continue;
-            Vec3d offset = sample.position().subtract(sample.lookAtPoint());
-            Vec3d direction = offset.normalizeOr(fallbackDirection);
             double relativeTime = sample.cinematicTimeSeconds() - centerTime;
-            lookAtRegression.add(relativeTime, sample.lookAtPoint(), weight);
-            directionRegression.add(relativeTime, direction, weight);
+            if (timeDistance <= targetWindow) {
+                double targetWeight = Math.max(0.0, 1.0 - timeDistance / targetWindow);
+                if (targetWeight > 0.0) {
+                    lookAtRegression.add(relativeTime, sample.lookAtPoint(), targetWeight);
+                }
+            }
+            if (timeDistance <= positionWindow) {
+                double positionWeight = Math.max(0.0, 1.0 - timeDistance / positionWindow);
+                if (positionWeight > 0.0) {
+                    Vec3d offset = sample.position().subtract(sample.lookAtPoint());
+                    Vec3d direction = offset.normalizeOr(fallbackDirection);
+                    directionRegression.add(relativeTime, direction, positionWeight);
+                }
+            }
         }
-        if (lookAtRegression.totalWeight() <= TIME_EPSILON) {
+        if (lookAtRegression.totalWeight() <= TIME_EPSILON && directionRegression.totalWeight() <= TIME_EPSILON) {
             return new SmoothedFrame(current.position(), current.lookAtPoint());
         }
 
-        Vec3d averageLookAt = lookAtRegression.valueAtCenter(current.lookAtPoint());
-        Vec3d directionResultant = directionRegression.valueAtCenter(fallbackDirection);
+        Vec3d averageLookAt = lookAtRegression.totalWeight() <= TIME_EPSILON
+                ? current.lookAtPoint()
+                : lookAtRegression.valueAtCenter(current.lookAtPoint());
+        Vec3d directionResultant = directionRegression.totalWeight() <= TIME_EPSILON
+                ? fallbackDirection
+                : directionRegression.valueAtCenter(fallbackDirection);
         Vec3d averageDirection = directionResultant.length() < MIN_DIRECTION_RESULTANT
                 ? fallbackDirection : directionResultant.normalizeOr(fallbackDirection);
 
         double positionStrength = settings.positionStrength();
-        Vec3d positionBase = current.lookAtPoint().lerp(averageLookAt, positionStrength);
+        // Orbit the smoothed aim so position and target stay framed together when target filtering is strong.
+        Vec3d positionBase = current.lookAtPoint().lerp(averageLookAt, Math.max(positionStrength, settings.targetStrength()));
         Vec3d direction = fallbackDirection.lerp(averageDirection, positionStrength).normalizeOr(fallbackDirection);
         Vec3d position = positionBase.add(direction.multiply(currentOffset.length()));
 
-        Vec3d lookAt = current.lookAtPoint().lerp(averageLookAt, settings.rotationStrength());
+        // targetStrength is the primary aim filter; rotationStrength remains a secondary legacy blend.
+        double targetBlend = Math.max(settings.targetStrength(), settings.rotationStrength() * 0.5);
+        Vec3d lookAt = current.lookAtPoint().lerp(averageLookAt, targetBlend);
         return new SmoothedFrame(position, lookAt);
     }
 

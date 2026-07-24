@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.10 - 2026-07-24
+
+- Added independent **camera target / aim** path-smoothing controls: target strength, target window, and target outlier rejection (UI + config).
+- Multi-region source montage: pick discontinuous replay windows (e.g. 10 s start + 10 s middle + 10 s end) and assemble them into one continuous output.
+- Generate Montage UI: add Flashback selection as a region, suggest start/middle/end thirds, seek/remove regions, seek planned shot source.
+- Flashback Timelapse now bridges source cuts with a one-tick output advance instead of rejecting multi-region plans.
+- Analysis samples only the selected regions; planner lays out each region and hard-cuts between them.
+
+## 1.3.9 - 2026-07-24
+
+- Added obstacle handling modes: **Avoid** (move camera), **Clip** (hide occluders between camera and subject), **None**.
+- Clip mode keeps the generated camera path and removes blocking blocks from view at runtime (section rebuild + air substitution).
+- Optional entity clip hides non-subject entities on the line of sight.
+- Legacy `collisionAvoidance` boolean is migrated into the new mode enum.
+- UI controls on single-shot and Generate Montage panels (EN/PL).
+
 ## 1.3.8 - 2026-07-24
 
 - Added montage shot preferences: enable/disable each generator type used by Analyze/Regenerate.

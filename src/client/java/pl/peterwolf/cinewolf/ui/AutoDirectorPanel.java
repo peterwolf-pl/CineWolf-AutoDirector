@@ -9,8 +9,10 @@ import imgui.moulberry90.type.ImInt;
 import net.minecraft.client.resources.language.I18n;
 import pl.peterwolf.cinewolf.api.ReplayEditorAdapter;
 import pl.peterwolf.cinewolf.camera.ReplayIntervalResolver;
+import pl.peterwolf.cinewolf.clip.OcclusionClipController;
 import pl.peterwolf.cinewolf.config.CineWolfConfig;
 import pl.peterwolf.cinewolf.config.CineWolfConfigManager;
+import pl.peterwolf.cinewolf.config.ObstacleHandlingMode;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.EasingType;
@@ -61,6 +63,7 @@ public final class AutoDirectorPanel {
         if (!adapter.isReplayEditorOpen()) return;
         refreshEntitiesIfNeeded();
         handleDeferredActions();
+        OcclusionClipController.get().setPreferredSubject(target);
 
         ImGui.setNextWindowSizeConstraints(360, 180, 760, 1100);
         if (ImGui.begin(tr("cinewolf.panel.title") + "###CineWolfAutoDirector", ImGuiWindowFlags.AlwaysAutoResize)) {
@@ -209,10 +212,24 @@ public final class AutoDirectorPanel {
 
         renderPathSmoothingFields();
 
-        ImGui.beginDisabled();
-        ImGui.checkbox(tr("cinewolf.field.collision_avoidance"), false);
-        ImGui.endDisabled();
-        tooltip(tr("cinewolf.tooltip.collision_avoidance"), ImGuiHoveredFlags.AllowWhenDisabled);
+        ObstacleHandlingMode[] modes = ObstacleHandlingMode.values();
+        ObstacleHandlingMode currentMode = config.montage.obstacleHandling();
+        comboValue.set(currentMode.ordinal());
+        if (ImGui.combo(tr("cinewolf.field.obstacle_handling"), comboValue,
+                java.util.Arrays.stream(modes).map(mode -> tr("cinewolf.montage.obstacle."
+                        + mode.name().toLowerCase(java.util.Locale.ROOT))).toArray(String[]::new))) {
+            config.montage.setObstacleHandling(modes[comboValue.get()]);
+            changed = true;
+        }
+        tooltip(tr("cinewolf.tooltip.obstacle_handling"));
+        if (config.montage.obstacleHandling().clipsOccluders()) {
+            boolean clipEntities = config.montage.clipEntities;
+            if (ImGui.checkbox(tr("cinewolf.montage.field.clip_entities"), clipEntities)) {
+                config.montage.clipEntities = !clipEntities;
+                changed = true;
+            }
+            tooltip(tr("cinewolf.montage.tooltip.clip_entities"));
+        }
 
         if (changed) markChanged();
         if (ImGui.button(tr("cinewolf.action.reset_defaults"))) {
@@ -247,6 +264,14 @@ public final class AutoDirectorPanel {
         changed |= number(tr("cinewolf.field.smoothing_window"), config.pathSmoothing.windowSeconds,
                 0.05, 0.05, 2.0, tr("cinewolf.tooltip.smoothing_window"), smoothingTooltipFlags,
                 value -> config.pathSmoothing.windowSeconds = value);
+        changed |= number(tr("cinewolf.field.target_smoothing_strength"),
+                config.pathSmoothing.targetStrength, 0.05, 0.0, 1.0,
+                tr("cinewolf.tooltip.target_smoothing_strength"), smoothingTooltipFlags,
+                value -> config.pathSmoothing.targetStrength = value);
+        changed |= number(tr("cinewolf.field.target_smoothing_window"),
+                config.pathSmoothing.targetWindowSeconds, 0.05, 0.05, 2.0,
+                tr("cinewolf.tooltip.target_smoothing_window"), smoothingTooltipFlags,
+                value -> config.pathSmoothing.targetWindowSeconds = value);
 
         boolean rejectOutliers = config.pathSmoothing.outlierRejection;
         if (ImGui.checkbox(tr("cinewolf.field.outlier_rejection"), rejectOutliers)) {
@@ -254,6 +279,12 @@ public final class AutoDirectorPanel {
             changed = true;
         }
         tooltip(tr("cinewolf.tooltip.outlier_rejection"), smoothingTooltipFlags);
+        boolean rejectTargetOutliers = config.pathSmoothing.targetOutlierRejection;
+        if (ImGui.checkbox(tr("cinewolf.field.target_outlier_rejection"), rejectTargetOutliers)) {
+            config.pathSmoothing.targetOutlierRejection = !rejectTargetOutliers;
+            changed = true;
+        }
+        tooltip(tr("cinewolf.tooltip.target_outlier_rejection"), smoothingTooltipFlags);
         if (smoothingDisabled) ImGui.endDisabled();
 
         boolean outlierFieldsDisabled = smoothingDisabled || !config.pathSmoothing.outlierRejection;

@@ -12,7 +12,10 @@
   "entrypoints": {
     "client": ["pl.peterwolf.cinewolf.CineWolfAutoDirectorClient"]
   },
-  "mixins": ["cinewolf_autodirector.mixins.json"],
+  "mixins": [
+    "cinewolf_autodirector.mixins.json",
+    "cinewolf_autodirector.client.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.19.3",
     "minecraft": "26.2",

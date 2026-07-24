@@ -77,16 +77,26 @@ class MontageTimelinePlanBuilderTest {
     }
 
     @Test
-    void rejectsAZeroDurationSourceCutBetweenAdjacentMappings() {
+    void bridgesASourceCutBetweenAdjacentMappingsWithStrictlyIncreasingOutput() {
         MontageTimelineWriteRequest request = new MontageTimelineWriteRequest(UUID.randomUUID(), 100,
-                List.of(new MontageGeneratedShot(0.0, path(0.0, 2.0, 10))),
+                List.of(new MontageGeneratedShot(0.0, path(0.0, 1.0, 10, 30, 0.0, 4.0)),
+                        new MontageGeneratedShot(1.0, path(0.0, 1.0, 50, 70, 10.0, 14.0))),
                 List.of(MontageTimeMapping.between(0.0, 1.0, 10, 30),
-                        MontageTimeMapping.between(1.0, 2.0, 50, 70)), 20);
+                        MontageTimeMapping.between(1.0, 2.0, 50, 70)), 40);
 
         MontageTimelinePlanBuilder.BuildResult result = builder.build(request);
 
-        assertFalse(result.valid());
-        assertTrue(result.errors().contains("montage.timeline.source_cut_not_supported"));
+        assertTrue(result.valid(), () -> "Unexpected errors: " + result.errors());
+        assertTrue(result.warnings().contains("montage.timeline.source_cut_bridged"));
+        MontageTimelineWritePlan plan = result.plan().orElseThrow();
+        List<Integer> outputs = plan.timelapseKeyframes().stream()
+                .map(MontageTimelineWritePlan.TimelapsePoint::outputElapsedTick).toList();
+        for (int index = 1; index < outputs.size(); index++) {
+            assertTrue(outputs.get(index) > outputs.get(index - 1),
+                    "Timelapse output must strictly increase across source cuts: " + outputs);
+        }
+        assertEquals(List.of(10, 30, 50, 70), plan.timelapseKeyframes().stream()
+                .map(MontageTimelineWritePlan.TimelapsePoint::timelineTick).toList());
     }
 
     @Test

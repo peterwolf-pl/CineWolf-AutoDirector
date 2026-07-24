@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "pl.peterwolf.cinewolf.mixin.clip",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "RenderSectionRegionMixin",
+    "EntityRenderDispatcherMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
