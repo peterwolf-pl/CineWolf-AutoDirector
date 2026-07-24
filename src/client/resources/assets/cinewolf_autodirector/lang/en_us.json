@@ -705,5 +705,12 @@
   "cinewolf.write.separate_layer_unsupported": "Separate CineWolf timeline layers are not supported by this Flashback version.",
   "cinewolf.timeline.overlay_fallback": "Using CineWolf timeline overlay (Flashback has no public event-track API).",
   "key.cinewolf.open": "Open CineWolf AutoDirector",
-  "category.cinewolf": "CineWolf"
+  "category.cinewolf": "CineWolf",
+  "cinewolf.montage.aspect.export_9_16_hint": "Export will use Flashback 9:16 (1080×1920) when applied.",
+  "cinewolf.montage.action.apply_export_aspect": "Apply 9:16 to Flashback export",
+  "cinewolf.montage.tooltip.apply_export_aspect": "Sets Flashback viewport aspect ratio and default export resolution to 1080×1920 for vertical montages.",
+  "cinewolf.montage.aspect.export_applied": "Flashback export set to 9:16 (1080×1920).",
+  "cinewolf.montage.aspect.export_apply_failed": "Could not apply Flashback export aspect (open a replay editor).",
+  "montage.reason.vertical_9_16_composition": "Framed for vertical 9:16 export",
+  "cinewolf.path_warning.vertical_framing_corrected": "Camera pulled back for 9:16 safe framing on %s samples."
 }

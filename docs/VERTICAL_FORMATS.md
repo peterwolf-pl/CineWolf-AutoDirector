@@ -44,11 +44,33 @@ The overlay is a guide, not a guarantee of an external editor's final crop. Prev
 
 CineWolf's multi-shot world path preview remains visible independently of the guide. Exiting preview clears both without writing keyframes.
 
-## Export notes
+## Export notes (Flashback 0.41.1)
 
-CineWolf stores aspect metadata for the montage project and planning diagnostics, but Flashback/Minecraft still render at the user's configured resolution. Exporters must choose a 9:16 resolution or crop separately.
+When a montage uses `VERTICAL_9_16`, CineWolf applies Flashback export settings:
+
+1. `ReplayVisuals.sizing = CHANGE_ASPECT_RATIO`
+2. `ReplayVisuals.changeAspectRatio = ASPECT_9_16`
+3. `internalExport.resolution = [1080, 1920]` (Flashback’s native 9:16 preset)
+
+This runs when:
+
+- the aspect combo is set to Vertical 9:16;
+- montage paths finish generating;
+- montage keyframes are written;
+- vertical montage preview is active;
+- the user clicks **Apply 9:16 to Flashback export**.
+
+Flashback’s Export dialog then opens already in 9:16 / 1080×1920. Landscape montages map to 1920×1080.
 
 No audio, captions, branding, padding, or social-platform upload behavior is implemented. YouTube Short and TikTok are composition/pacing presets, not integrations with those services.
+
+## Generation adjustments for 9:16
+
+- Extra camera distance (narrow horizontal FOV) and slightly higher height bias.
+- Tighter FOV tables and reduced lateral speed.
+- Intro/outro use MEDIUM framing instead of WIDE.
+- Flyby is rewritten to side-tracking/follow when available.
+- Paths that leave the safe area get an automatic radial pull-back before write.
 
 ## Manual verification
 

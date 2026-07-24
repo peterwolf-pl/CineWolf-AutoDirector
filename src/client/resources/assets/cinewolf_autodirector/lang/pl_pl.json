@@ -705,5 +705,12 @@
   "cinewolf.write.separate_layer_unsupported": "Oddzielne warstwy CineWolf nie są obsługiwane przez tę wersję Flashback.",
   "cinewolf.timeline.overlay_fallback": "Używam nakładki CineWolf (Flashback nie ma publicznego API toru zdarzeń).",
   "key.cinewolf.open": "Otwórz CineWolf AutoDirector",
-  "category.cinewolf": "CineWolf"
+  "category.cinewolf": "CineWolf",
+  "cinewolf.montage.aspect.export_9_16_hint": "Eksport użyje Flashback 9:16 (1080×1920) po zastosowaniu.",
+  "cinewolf.montage.action.apply_export_aspect": "Ustaw 9:16 w eksporcie Flashback",
+  "cinewolf.montage.tooltip.apply_export_aspect": "Ustawia proporcje widoku Flashback i domyślną rozdzielczość eksportu na 1080×1920 dla montaży pionowych.",
+  "cinewolf.montage.aspect.export_applied": "Eksport Flashback ustawiony na 9:16 (1080×1920).",
+  "cinewolf.montage.aspect.export_apply_failed": "Nie udało się ustawić proporcji eksportu (otwórz edytor powtórki).",
+  "montage.reason.vertical_9_16_composition": "Skomponowano pod pionowy eksport 9:16",
+  "cinewolf.path_warning.vertical_framing_corrected": "Kamera cofnięta dla bezpiecznego kadru 9:16 w %s próbkach."
 }

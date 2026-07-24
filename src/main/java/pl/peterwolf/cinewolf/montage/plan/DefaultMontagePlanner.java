@@ -155,10 +155,20 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         ReplayEvent event = scored.event();
         SourceInterval interval = new SourceInterval(sourceStart, sourceEnd);
         double actualSpeed = ((interval.end - interval.start) / 20.0) / duration;
-        FramingType framing = framing(event.type(), index, shotCount);
+        boolean vertical = request.aspectRatio()
+                == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16;
+        FramingType framing = framing(event.type(), index, shotCount, vertical);
         ShotTypeSelection typeSelection = chooseShotType(event.type(), index, shotCount, previousType,
                 request, context);
         ShotType type = typeSelection.selected();
+        // Prefer center-safe generators on 9:16 when a wide lateral flyby was selected.
+        if (vertical && type == ShotType.FLYBY) {
+            if (context.availableShotTypes().contains(ShotType.SIDE_TRACKING)) {
+                type = ShotType.SIDE_TRACKING;
+            } else if (context.availableShotTypes().contains(ShotType.FOLLOW)) {
+                type = ShotType.FOLLOW;
+            }
+        }
         ShotRequest shotRequest = templateResolver.createShotRequest(event, target, type, framing,
                 interval.start, interval.end, duration, request.cameraMovementIntensity(), index,
                 analysis, request, context);
@@ -167,6 +177,9 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 ? "montage.reason.outro" : "montage.reason.event_match");
         reasons.add("montage.reason.event." + event.type().name().toLowerCase(java.util.Locale.ROOT));
         reasons.addAll(scored.scoringReasons());
+        if (vertical) {
+            reasons.add("montage.reason.vertical_9_16_composition");
+        }
         if (typeSelection.fallback()) {
             reasons.add("montage.reason.shot_fallback;requested=" + shotTranslationKey(typeSelection.requested())
                     + ";chosen=" + shotTranslationKey(typeSelection.selected()));
@@ -177,8 +190,8 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         UUID shotId = UUID.nameUUIDFromBytes((event.eventId() + ":" + index + ":" + type)
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         List<MontageWarning> shotWarnings = new ArrayList<>();
-        if (request.aspectRatio() == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16
-                && (framing == FramingType.EXTREME_WIDE || type == ShotType.FLYBY)) {
+        if (vertical && (framing == FramingType.EXTREME_WIDE || framing == FramingType.WIDE
+                || type == ShotType.FLYBY || type == ShotType.SPIRAL)) {
             shotWarnings.add(MontageWarning.warning("montage.warning.vertical_framing_risk"));
         }
         return new PlannedMontageShot(shotId, index, event, scored.finalScore(), target, type, framing,
@@ -660,12 +673,20 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         return "cinewolf.shot." + type.name().toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static FramingType framing(ReplayEventType type, int index, int count) {
-        if (index == 0 || index == count - 1) return FramingType.WIDE;
-        return switch (type) {
+    private static FramingType framing(ReplayEventType type, int index, int count, boolean vertical) {
+        // Vertical 9:16 keeps intro/outro tighter so subjects stay inside the tall safe area.
+        if (index == 0 || index == count - 1) {
+            return vertical ? FramingType.MEDIUM : FramingType.WIDE;
+        }
+        FramingType base = switch (type) {
             case COMBAT, DAMAGE, DEATH, PAUSE -> FramingType.CLOSE;
             case HIGH_SPEED, VEHICLE_MOVEMENT, FLIGHT, ALTITUDE_GAIN, ALTITUDE_LOSS -> FramingType.WIDE;
             default -> FramingType.MEDIUM;
+        };
+        if (!vertical) return base;
+        return switch (base) {
+            case EXTREME_WIDE, WIDE -> FramingType.MEDIUM;
+            default -> base;
         };
     }
 

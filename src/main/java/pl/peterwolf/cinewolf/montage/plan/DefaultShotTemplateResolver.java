@@ -13,6 +13,7 @@ import pl.peterwolf.cinewolf.montage.analysis.ReplayEntitySnapshot;
 import pl.peterwolf.cinewolf.montage.event.ReplayEvent;
 import pl.peterwolf.cinewolf.montage.preset.FramingType;
 import pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio;
+import pl.peterwolf.cinewolf.montage.preset.VerticalComposition;
 
 import java.util.Comparator;
 import java.util.Optional;
@@ -25,28 +26,31 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
                                          int shotIndex, ReplayAnalysisResult analysis, MontageRequest request,
                                          MontagePlanningContext context) {
         MontageShotPreferences prefs = request.shotPreferences();
+        boolean vertical = request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16;
+        FramingType effectiveFraming = vertical
+                ? VerticalComposition.verticalSafeFraming(framing) : framing;
         double size = targetSize(target, event.peakReplayTime(), analysis).orElse(1.8);
-        double framingMultiplier = switch (framing) {
+        double framingMultiplier = switch (effectiveFraming) {
             case EXTREME_WIDE -> 6.5;
             case WIDE -> 4.5;
             case MEDIUM -> 3.0;
             case CLOSE -> 1.9;
             case EXTREME_CLOSE -> 1.25;
         };
-        double verticalMultiplier = request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16 ? 1.2 : 1.0;
+        double verticalMultiplier = VerticalComposition.distanceMultiplier(request.aspectRatio());
         double distance = prefs.clampDistance(size * framingMultiplier * verticalMultiplier);
-        double height = prefs.clampHeight(size * (framing == FramingType.CLOSE || framing == FramingType.EXTREME_CLOSE
-                ? 0.55 : 1.0));
-        double orbitDiameter = prefs.clampOrbitDiameter(distance * 1.8);
+        // Vertical export benefits from slightly higher camera so faces/players stay in the upper third.
+        double heightBias = vertical ? 1.15 : 1.0;
+        double height = prefs.clampHeight(size * (effectiveFraming == FramingType.CLOSE
+                || effectiveFraming == FramingType.EXTREME_CLOSE ? 0.55 : 1.0) * heightBias);
+        double orbitDiameter = prefs.clampOrbitDiameter(distance * (vertical ? 1.55 : 1.8));
         double startDistance = prefs.clampDistance(distance * 1.5);
         double endDistance = prefs.clampDistance(Math.min(distance * 0.65, startDistance));
         if (endDistance > startDistance) endDistance = startDistance;
         double rpm = clamp(0.15 + movementIntensity * 0.9, 0.05, 3.0);
-        double cameraSpeed = clamp(1.5 + movementIntensity * 8.0, 0.5, 24.0);
-        double fov = framing == FramingType.EXTREME_WIDE ? 78.0
-                : framing == FramingType.WIDE ? 72.0
-                : framing == FramingType.MEDIUM ? 65.0
-                : framing == FramingType.CLOSE ? 55.0 : 45.0;
+        // Reduce lateral speed on vertical so the subject stays centered longer.
+        double cameraSpeed = clamp((1.5 + movementIntensity * 8.0) * (vertical ? 0.85 : 1.0), 0.5, 24.0);
+        double fov = VerticalComposition.fovForFraming(effectiveFraming, request.aspectRatio());
         RotationDirection direction = switch (shotType) {
             case FLYBY, SIDE_TRACKING, REVEAL, VEHICLE_PROFILE ->
                     shotIndex % 2 == 0 ? RotationDirection.LEFT_TO_RIGHT : RotationDirection.RIGHT_TO_LEFT;

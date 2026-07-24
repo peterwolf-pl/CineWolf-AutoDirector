@@ -6,11 +6,14 @@ import pl.peterwolf.cinewolf.api.CollisionResolver;
 import pl.peterwolf.cinewolf.camera.CameraPathFinalizer;
 import pl.peterwolf.cinewolf.camera.CameraPathPlanner;
 import pl.peterwolf.cinewolf.camera.SampledTargetPoseResolver;
+import pl.peterwolf.cinewolf.camera.VerticalFramingCorrector;
 import pl.peterwolf.cinewolf.camera.VerticalFramingValidator;
 import pl.peterwolf.cinewolf.config.CineWolfConfig;
+import pl.peterwolf.cinewolf.integration.flashback.FlashbackExportAspectSync;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackMontageTimelineWriter;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackWorldCollisionResolver;
+import pl.peterwolf.cinewolf.montage.preset.VerticalComposition;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.CameraSample;
 import pl.peterwolf.cinewolf.model.PathStatistics;
@@ -46,6 +49,7 @@ public final class MontageGenerationController implements AutoCloseable {
     private final CameraPathPlanner pathPlanner = CameraPathPlanner.createDefault();
     private final CameraPathFinalizer pathFinalizer = new CameraPathFinalizer();
     private final VerticalFramingValidator verticalFramingValidator = new VerticalFramingValidator();
+    private final VerticalFramingCorrector verticalFramingCorrector = new VerticalFramingCorrector();
     private final FlashbackWorldCollisionResolver collisionResolver = new FlashbackWorldCollisionResolver();
     private final FlashbackMontageTimelineWriter timelineWriter = new FlashbackMontageTimelineWriter();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -317,6 +321,8 @@ public final class MontageGenerationController implements AutoCloseable {
 
     private List<GeneratedPath> applyVerticalFramingWarnings(GenerationJob current, List<GeneratedPath> paths) {
         if (!config.montage.aspectRatio.vertical()) return paths;
+        // Ensure Flashback export/preview are already in 9:16 when paths become ready.
+        FlashbackExportAspectSync.apply(config.montage.aspectRatio);
         List<GeneratedPath> validated = new ArrayList<>(paths.size());
         for (GeneratedPath generated : paths) {
             TreeMap<Long, TargetPose> poses = new TreeMap<>();
@@ -324,23 +330,24 @@ public final class MontageGenerationController implements AutoCloseable {
                 var snapshot = sample.entities().get(generated.shot.target());
                 if (snapshot != null) poses.put(sample.replayTime(), snapshot.pose());
             });
-            VerticalFramingValidator.Result result = verticalFramingValidator.validate(generated.path.samples(),
-                    new SampledTargetPoseResolver(poses), generated.shot.target(), 9.0 / 16.0,
-                    config.montage.verticalSafeArea);
+            SampledTargetPoseResolver resolver = new SampledTargetPoseResolver(poses);
+            VerticalFramingCorrector.CorrectionResult correction = verticalFramingCorrector.correct(
+                    generated.path.samples(), resolver, generated.shot.target(),
+                    VerticalComposition.WIDTH_TO_HEIGHT, config.montage.verticalSafeArea);
+            List<CameraSample> samples = correction.samples();
             List<PathWarning> warnings = new ArrayList<>(generated.path.warnings());
-            if (result.hasRisk()) {
-                warnings.add(new PathWarning(PathWarning.Severity.WARNING, "vertical_framing_risk",
-                        "Target bounds leave the vertical safe area in " + result.outsideSamples()
-                                + " camera samples", 0.0));
+            warnings.addAll(correction.warnings());
+            CameraPathPlan path;
+            if (correction.adjustedSamples() > 0) {
+                CameraPathPlan raw = new CameraPathPlan(generated.path.request(), samples, samples,
+                        warnings, generated.path.statistics());
+                path = pathFinalizer.finalizePath(raw, config.samplingSettings());
+            } else if (!warnings.equals(generated.path.warnings())) {
+                path = new CameraPathPlan(generated.path.request(), generated.path.samples(),
+                        generated.path.simplifiedSamples(), warnings, generated.path.statistics());
+            } else {
+                path = generated.path;
             }
-            if (result.incomplete()) {
-                warnings.add(new PathWarning(PathWarning.Severity.WARNING, "vertical_framing_unverified",
-                        "Vertical framing could not be verified in " + result.unavailableSamples()
-                                + " camera samples", 0.0));
-            }
-            CameraPathPlan path = warnings.equals(generated.path.warnings()) ? generated.path
-                    : new CameraPathPlan(generated.path.request(), generated.path.samples(),
-                    generated.path.simplifiedSamples(), warnings, generated.path.statistics());
             validated.add(new GeneratedPath(generated.shot, path));
         }
         return List.copyOf(validated);
@@ -358,10 +365,17 @@ public final class MontageGenerationController implements AutoCloseable {
                                                              MontageTimelineWriteOptions options) {
         MontageTimelineWriteRequest request = writeRequest(absoluteOutputStartTick);
         if (request == null) return null;
+        if (config.montage.aspectRatio.vertical() || config.montage.aspectRatio != null) {
+            FlashbackExportAspectSync.apply(config.montage.aspectRatio);
+        }
         FlashbackMontageTimelineWriter.WriteResult result = timelineWriter.write(request, options);
-        if (result.success()) setStatus("cinewolf.montage.generation.written", result.cameraKeyframes(),
-                result.fovKeyframes(), result.timelapseKeyframes());
-        else setStatus("cinewolf.montage.error.timeline_write_failed");
+        if (result.success()) {
+            FlashbackExportAspectSync.apply(config.montage.aspectRatio);
+            setStatus("cinewolf.montage.generation.written", result.cameraKeyframes(),
+                    result.fovKeyframes(), result.timelapseKeyframes());
+        } else {
+            setStatus("cinewolf.montage.error.timeline_write_failed");
+        }
         logger.info("CineWolf montage timeline write: success={}, montage={}, cameraKeys={}, fovKeys={}, "
                         + "timelapseKeys={}, conflictKeys={}, conflictSegments={}, errors={}, warnings={}",
                 result.success(), result.montageId(), result.cameraKeyframes(), result.fovKeyframes(),

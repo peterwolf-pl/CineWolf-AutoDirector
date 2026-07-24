@@ -13,6 +13,7 @@ import pl.peterwolf.cinewolf.config.CineWolfConfig;
 import pl.peterwolf.cinewolf.config.CineWolfConfigManager;
 import pl.peterwolf.cinewolf.config.MontageConfig;
 import pl.peterwolf.cinewolf.config.ObstacleHandlingMode;
+import pl.peterwolf.cinewolf.integration.flashback.FlashbackExportAspectSync;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackMontageTimelineWriter;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.model.EasingType;
@@ -354,9 +355,21 @@ public final class GenerateMontagePanel {
                 Arrays.stream(ratios).map(value -> tr("cinewolf.montage.aspect."
                         + value.name().toLowerCase(Locale.ROOT))).toArray(String[]::new))) {
             settings.aspectRatio = ratios[comboValue.get()];
+            applyFlashbackExportAspect(settings.aspectRatio);
             settingsChanged();
         }
         tooltip(tr("cinewolf.montage.tooltip.aspect_ratio"));
+        if (settings.aspectRatio == OutputAspectRatio.VERTICAL_9_16) {
+            ImGui.textDisabled(tr("cinewolf.montage.aspect.export_9_16_hint"));
+            if (ImGui.button(tr("cinewolf.montage.action.apply_export_aspect"))) {
+                if (applyFlashbackExportAspect(settings.aspectRatio)) {
+                    showAction(tr("cinewolf.montage.aspect.export_applied"), NoticeSeverity.SUCCESS);
+                } else {
+                    showAction(tr("cinewolf.montage.aspect.export_apply_failed"), NoticeSeverity.ERROR);
+                }
+            }
+            tooltip(tr("cinewolf.montage.tooltip.apply_export_aspect"));
+        }
     }
 
     private void renderCoreSettings(TargetReference sharedTarget) {
@@ -1300,7 +1313,13 @@ public final class GenerateMontagePanel {
     private void updateSafeAreaOverlay() {
         if (previewController.active() && config.montage.aspectRatio == OutputAspectRatio.VERTICAL_9_16) {
             safeAreaOverlay.show(config.montage.verticalSafeArea);
+            applyFlashbackExportAspect(OutputAspectRatio.VERTICAL_9_16);
         } else safeAreaOverlay.hide();
+    }
+
+    private boolean applyFlashbackExportAspect(OutputAspectRatio aspect) {
+        if (aspect == null) return false;
+        return FlashbackExportAspectSync.apply(aspect);
     }
 
     private void renderMessages() {
