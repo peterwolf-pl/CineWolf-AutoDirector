@@ -8,11 +8,15 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.fabricmc.loader.api.FabricLoader;
 import pl.peterwolf.cinewolf.camera.CameraPathPlanner;
 import pl.peterwolf.cinewolf.clip.OcclusionClipController;
 import pl.peterwolf.cinewolf.config.CineWolfConfigManager;
+import pl.peterwolf.cinewolf.input.CineWolfKeybinds;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackCompatibility;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
+import pl.peterwolf.cinewolf.montage.MontageHighlightController;
+import pl.peterwolf.cinewolf.montage.highlight.MontageHighlightStore;
 import pl.peterwolf.cinewolf.preview.CameraPathPreviewRenderer;
 import pl.peterwolf.cinewolf.preview.PreviewController;
 import pl.peterwolf.cinewolf.preview.VerticalSafeAreaOverlay;
@@ -30,6 +34,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
     private static MontageAnalysisController montageAnalysisController;
     private static MontageGenerationController montageGenerationController;
     private static MontagePreviewController montagePreviewController;
+    private static MontageHighlightController montageHighlightController;
     private static VerticalSafeAreaOverlay verticalSafeAreaOverlay;
     private static boolean compatibilityMessageShown;
 
@@ -45,6 +50,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
             return;
         }
 
+        CineWolfKeybinds.register();
         FlashbackReplayEditorAdapter adapter = new FlashbackReplayEditorAdapter(LOGGER);
         OcclusionClipController.get().bindConfig(configManager.get());
         previewRenderer = new CameraPathPreviewRenderer(adapter);
@@ -52,13 +58,16 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
         previewRenderer.setVisible(configManager.get().previewVisible
                 || configManager.get().montage.debugVisualization);
         previewController = new PreviewController(adapter, CameraPathPlanner.createDefault(), previewRenderer, LOGGER);
-        montageAnalysisController = new MontageAnalysisController(adapter, configManager.get(), LOGGER);
+        MontageHighlightStore highlightStore = new MontageHighlightStore(
+                FabricLoader.getInstance().getConfigDir().resolve("cinewolf-autodirector-highlights.json"), LOGGER);
+        montageHighlightController = new MontageHighlightController(adapter, highlightStore, LOGGER);
+        montageAnalysisController = new MontageAnalysisController(adapter, configManager.get(), LOGGER, highlightStore);
         montageGenerationController = new MontageGenerationController(adapter, configManager.get(), previewRenderer, LOGGER);
         montagePreviewController = new MontagePreviewController(adapter);
         verticalSafeAreaOverlay = new VerticalSafeAreaOverlay();
         GenerateMontagePanel montagePanel = new GenerateMontagePanel(adapter, configManager,
                 montageAnalysisController, montageGenerationController, montagePreviewController,
-                verticalSafeAreaOverlay, previewController, LOGGER);
+                verticalSafeAreaOverlay, previewController, LOGGER, highlightStore);
         panel = new AutoDirectorPanel(adapter, previewController, configManager, montagePanel);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (!adapter.isReplayEditorOpen() && verticalSafeAreaOverlay != null) {
@@ -69,6 +78,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
             } else {
                 OcclusionClipController.get().clear();
             }
+            montageHighlightController.tick();
             previewController.tick();
             montageAnalysisController.tick();
             montageGenerationController.tick();

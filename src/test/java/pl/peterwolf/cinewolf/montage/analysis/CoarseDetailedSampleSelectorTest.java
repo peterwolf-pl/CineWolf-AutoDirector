@@ -64,4 +64,29 @@ class CoarseDetailedSampleSelectorTest {
         assertTrue(result.detailedWindows().isEmpty());
         assertTrue(result.detailedSamples().isEmpty());
     }
+
+    @Test
+    void coverageBudgetLimitsDetailWindowsOnLongActiveReplays() {
+        List<ReplaySample> samples = new ArrayList<>();
+        // Continuous motion for 5 minutes of ticks → without a budget this becomes one huge detail region.
+        for (int tick = 0; tick <= 6_000; tick += 5) {
+            samples.add(sample(tick, snapshot(PLAYER, tick * 0.5, 0, 0)));
+        }
+        ReplayAnalysisRequest request = new ReplayAnalysisRequest(0, 6_000, java.util.Set.of(PLAYER), false,
+                EnumSet.allOf(pl.peterwolf.cinewolf.montage.event.ReplayEventType.class), 0.5, 4, 16);
+
+        SampleSelection unlimited = selector.select(samples, request, DetectorThresholds.defaults(), 1.0);
+        SampleSelection limited = selector.select(samples, request, DetectorThresholds.defaults(), 0.2);
+
+        long unlimitedSpan = unlimited.detailedWindows().stream()
+                .mapToLong(window -> window.endReplayTime() - window.startReplayTime()).sum();
+        long limitedSpan = limited.detailedWindows().stream()
+                .mapToLong(window -> window.endReplayTime() - window.startReplayTime()).sum();
+
+        assertTrue(limitedSpan < unlimitedSpan,
+                "Coverage budget should shrink detailed windows: limited=" + limitedSpan
+                        + " unlimited=" + unlimitedSpan);
+        assertTrue(limitedSpan <= 6_000 * 0.25 + 250,
+                "Limited coverage should stay near the budget: " + limitedSpan);
+    }
 }

@@ -37,7 +37,18 @@ public final class MontageConfig {
     /** When CLIP is active, also hide entities that sit on the camera→subject ray. */
     public boolean clipEntities = true;
     public int coarseSamplesPerSecond = 4;
-    public int detailedSamplesPerSecond = 16;
+    /** Samples/s inside active windows. Lower = much faster analysis on long replays. */
+    public int detailedSamplesPerSecond = 10;
+    /**
+     * Hard cap on additional seeks performed in the detailed-sampling phase.
+     * Each sample needs ~2 client ticks + seek cost, so this dominates wall-clock time.
+     */
+    public int maximumDetailedSamples = 360;
+    /**
+     * Maximum total duration of detailed windows as a fraction of the analyzed source
+     * (0.05–1.0). Prevents near-continuous activity from detailing the whole replay.
+     */
+    public double maximumDetailedCoverageFraction = 0.35;
     public int maximumTrackedEntities = 16;
     public int maximumTotalSamples = 6_000;
     public int maximumDetectedEvents = 512;
@@ -89,7 +100,9 @@ public final class MontageConfig {
         if (maximumShotDuration < minimumShotDuration) maximumShotDuration = minimumShotDuration;
         eventSensitivity = clamp(eventSensitivity, 0.6, 0.0, 1.0);
         coarseSamplesPerSecond = Math.max(2, Math.min(5, coarseSamplesPerSecond));
-        detailedSamplesPerSecond = Math.max(10, Math.min(20, detailedSamplesPerSecond));
+        detailedSamplesPerSecond = Math.max(4, Math.min(20, detailedSamplesPerSecond));
+        maximumDetailedSamples = Math.max(0, Math.min(4_000, maximumDetailedSamples));
+        maximumDetailedCoverageFraction = clamp(maximumDetailedCoverageFraction, 0.35, 0.05, 1.0);
         maximumTrackedEntities = Math.max(1, Math.min(64, maximumTrackedEntities));
         maximumTotalSamples = Math.max(128, Math.min(50_000, maximumTotalSamples));
         maximumDetectedEvents = Math.max(32, Math.min(5_000, maximumDetectedEvents));

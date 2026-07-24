@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.11 - 2026-07-24
+
+- Hotkeys to mark montage moments/fragments while watching a replay (or recording):
+  - **H** mark moment (±1.5 s window, optional Flashback marker)
+  - **J** start/end fragment
+  - **K** cancel unfinished fragment
+- Highlights persist per replay and appear in Generate Montage; can be promoted to source regions.
+- Detailed sampling is much faster on long replays:
+  - default detailed rate **16 → 10**/s
+  - hard cap `maximumDetailedSamples` (default **360**)
+  - coverage budget `maximumDetailedCoverageFraction` (default **35%**)
+  - adaptive seek interval + prefer high-signal compact windows
+  - UI knobs for the new limits
+
 ## 1.3.10 - 2026-07-24
 
 - Added independent **camera target / aim** path-smoothing controls: target strength, target window, and target outlier rejection (UI + config).

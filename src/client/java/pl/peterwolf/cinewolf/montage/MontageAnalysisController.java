@@ -10,6 +10,7 @@ import pl.peterwolf.cinewolf.model.TargetReference;
 import pl.peterwolf.cinewolf.montage.analysis.AnalysisCancelledException;
 import pl.peterwolf.cinewolf.montage.analysis.AnalysisLimits;
 import pl.peterwolf.cinewolf.montage.analysis.AnalysisStage;
+import pl.peterwolf.cinewolf.montage.analysis.CoarseDetailedSampleSelector;
 import pl.peterwolf.cinewolf.montage.analysis.DefaultReplayAnalyzer;
 import pl.peterwolf.cinewolf.montage.analysis.ObservedReplayAction;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayAnalysisContext;
@@ -19,6 +20,8 @@ import pl.peterwolf.cinewolf.montage.analysis.ReplayMarkerSnapshot;
 import pl.peterwolf.cinewolf.montage.analysis.ReplaySample;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayTimeWindow;
 import pl.peterwolf.cinewolf.montage.event.ReplayEventType;
+import pl.peterwolf.cinewolf.montage.highlight.MontageHighlight;
+import pl.peterwolf.cinewolf.montage.highlight.MontageHighlightStore;
 import pl.peterwolf.cinewolf.montage.plan.DefaultMontagePlanner;
 import pl.peterwolf.cinewolf.montage.plan.MontagePlan;
 import pl.peterwolf.cinewolf.montage.plan.MontagePlanEditor;
@@ -38,6 +41,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,6 +55,7 @@ public final class MontageAnalysisController implements AutoCloseable {
     private final FlashbackReplayEditorAdapter adapter;
     private final CineWolfConfig config;
     private final Logger logger;
+    private final MontageHighlightStore highlightStore;
     private final DefaultReplayAnalyzer analyzer = DefaultReplayAnalyzer.createDefault();
     private final DefaultMontagePlanner planner = new DefaultMontagePlanner();
     private final MontagePlanEditor planEditor = new MontagePlanEditor();
@@ -73,9 +78,15 @@ public final class MontageAnalysisController implements AutoCloseable {
     private boolean editorWasOpen;
 
     public MontageAnalysisController(FlashbackReplayEditorAdapter adapter, CineWolfConfig config, Logger logger) {
+        this(adapter, config, logger, null);
+    }
+
+    public MontageAnalysisController(FlashbackReplayEditorAdapter adapter, CineWolfConfig config, Logger logger,
+                                     MontageHighlightStore highlightStore) {
         this.adapter = Objects.requireNonNull(adapter);
         this.config = Objects.requireNonNull(config);
         this.logger = Objects.requireNonNull(logger);
+        this.highlightStore = highlightStore;
     }
 
     private MontagePlanningContext planningContextFromConfig() {
@@ -113,10 +124,19 @@ public final class MontageAnalysisController implements AutoCloseable {
         ReplayAnalysisRequest request = new ReplayAnalysisRequest(analysisStart, analysisEnd, selectedTargets,
                 settings.automaticTargetDetection, enabledTypes, settings.eventSensitivity,
                 settings.coarseSamplesPerSecond, settings.detailedSamplesPerSecond, segments);
-        List<ReplayMarkerSnapshot> markers = settings.includeReplayMarkers
-                ? adapter.replayMarkers(analysisStart, analysisEnd).stream()
-                .filter(marker -> request.contains(marker.replayTime())).toList()
-                : List.of();
+        List<ReplayMarkerSnapshot> markers = new ArrayList<>();
+        if (settings.includeReplayMarkers) {
+            adapter.replayMarkers(analysisStart, analysisEnd).stream()
+                    .filter(marker -> request.contains(marker.replayTime()))
+                    .forEach(markers::add);
+        }
+        // User-marked highlights always participate as synthetic markers + sampling anchors.
+        for (ReplayMarkerSnapshot highlightMarker : highlightMarkers(request)) {
+            if (markers.stream().noneMatch(existing -> existing.replayTime() == highlightMarker.replayTime()
+                    && existing.label().equals(highlightMarker.label()))) {
+                markers.add(highlightMarker);
+            }
+        }
         List<Long> ticks = coarseTicks(request, markers, settings.maximumTotalSamples);
         if (ticks.size() < 2) return reject("cinewolf.montage.error.sample_range_too_short");
 
@@ -229,12 +249,28 @@ public final class MontageAnalysisController implements AutoCloseable {
 
     private void acceptPreliminary(SamplingJob current, ReplayAnalysisResult preliminary) {
         if (current.id != generations.get() || job != current || !adapter.isReplayEditorOpen()) return;
-        List<Long> detailed = detailedTicks(preliminary.sampleSelection().detailedWindows(), current.request,
-                current.samples.keySet(), config.montage.maximumTotalSamples - current.samples.size());
+        int remainingTotal = Math.max(0, config.montage.maximumTotalSamples - current.samples.size());
+        int detailedBudget = Math.min(remainingTotal, config.montage.maximumDetailedSamples);
+        List<ReplayTimeWindow> rawWindows = mergeHighlightWindows(
+                preliminary.sampleSelection().detailedWindows(), current.request);
+        // Re-apply coverage budget with current settings (highlights are force-kept via merge first).
+        List<ReplayTimeWindow> windows = CoarseDetailedSampleSelector.prioritizeWindows(
+                rawWindows, List.copyOf(current.samples.values()),
+                config.montage.detectorThresholds.toModel(),
+                current.request.startReplayTime(), current.request.endReplayTime(),
+                config.montage.maximumDetailedCoverageFraction);
+        // Always keep user highlight windows even if coverage budget would drop them.
+        windows = ensureHighlightWindows(windows, current.request);
+        List<Long> detailed = detailedTicks(windows, current.request, current.samples.keySet(),
+                detailedBudget, current.request.detailedSamplesPerSecond());
         if (detailed.isEmpty()) {
+            logger.info("CineWolf skipping detailed sampling (budget={}, windows={})",
+                    detailedBudget, windows.size());
             startRestore(current, null);
             return;
         }
+        logger.info("CineWolf detailed sampling: windows={}, ticks={}, budget={}, rate={}/s",
+                windows.size(), detailed.size(), detailedBudget, current.request.detailedSamplesPerSecond());
         current.ticks = detailed;
         current.index = 0;
         current.stableTicks = 0;
@@ -521,12 +557,102 @@ public final class MontageAnalysisController implements AutoCloseable {
         return capEvenly(ticks.stream().sorted().toList(), maximumSamples);
     }
 
+    private List<ReplayMarkerSnapshot> highlightMarkers(ReplayAnalysisRequest request) {
+        if (highlightStore == null) return List.of();
+        highlightStore.setActiveReplay(adapter.replayIdentifier());
+        List<ReplayMarkerSnapshot> result = new ArrayList<>();
+        for (MontageHighlight highlight : highlightStore.highlightsForActiveReplay()) {
+            if (!request.contains(highlight.peakTick())
+                    && !request.contains(highlight.startTick())
+                    && !request.contains(highlight.endTick())) {
+                continue;
+            }
+            String label = highlight.label().isBlank()
+                    ? "cinewolf-" + highlight.kind().name().toLowerCase()
+                    : highlight.label();
+            UUID id = highlight.id();
+            result.add(new ReplayMarkerSnapshot(id, highlight.peakTick(), label, java.util.Optional.empty()));
+            // Fragment endpoints also act as anchors for coarse sampling.
+            if (highlight.kind() == MontageHighlight.Kind.FRAGMENT) {
+                result.add(new ReplayMarkerSnapshot(UUID.nameUUIDFromBytes((id + ":start").getBytes()),
+                        highlight.startTick(), label + "-start", java.util.Optional.empty()));
+                result.add(new ReplayMarkerSnapshot(UUID.nameUUIDFromBytes((id + ":end").getBytes()),
+                        highlight.endTick(), label + "-end", java.util.Optional.empty()));
+            }
+        }
+        return result;
+    }
+
+    private List<ReplayTimeWindow> mergeHighlightWindows(List<ReplayTimeWindow> base, ReplayAnalysisRequest request) {
+        List<ReplayTimeWindow> windows = new ArrayList<>(base == null ? List.of() : base);
+        windows.addAll(highlightWindows(request));
+        return mergeWindows(windows);
+    }
+
+    private List<ReplayTimeWindow> ensureHighlightWindows(List<ReplayTimeWindow> prioritized,
+                                                          ReplayAnalysisRequest request) {
+        List<ReplayTimeWindow> windows = new ArrayList<>(prioritized == null ? List.of() : prioritized);
+        windows.addAll(highlightWindows(request));
+        return mergeWindows(windows);
+    }
+
+    private List<ReplayTimeWindow> highlightWindows(ReplayAnalysisRequest request) {
+        if (highlightStore == null) return List.of();
+        highlightStore.setActiveReplay(adapter.replayIdentifier());
+        List<ReplayTimeWindow> windows = new ArrayList<>();
+        for (MontageHighlight highlight : highlightStore.highlightsForActiveReplay()) {
+            long start = Math.max(request.startReplayTime(), highlight.startTick());
+            long end = Math.min(request.endReplayTime(), highlight.endTick());
+            if (end > start) windows.add(new ReplayTimeWindow(start, end));
+        }
+        return windows;
+    }
+
+    private static List<ReplayTimeWindow> mergeWindows(List<ReplayTimeWindow> windows) {
+        if (windows == null || windows.isEmpty()) return List.of();
+        List<ReplayTimeWindow> ordered = windows.stream()
+                .sorted(java.util.Comparator.comparingLong(ReplayTimeWindow::startReplayTime))
+                .toList();
+        List<ReplayTimeWindow> merged = new ArrayList<>();
+        ReplayTimeWindow current = ordered.getFirst();
+        for (int index = 1; index < ordered.size(); index++) {
+            ReplayTimeWindow next = ordered.get(index);
+            if (next.startReplayTime() <= current.endReplayTime() + 1) {
+                current = new ReplayTimeWindow(current.startReplayTime(),
+                        Math.max(current.endReplayTime(), next.endReplayTime()));
+            } else {
+                merged.add(current);
+                current = next;
+            }
+        }
+        merged.add(current);
+        return List.copyOf(merged);
+    }
+
+    /**
+     * Builds a capped detailed seek list. Long windows use a coarser adaptive interval so wall-clock
+     * time stays proportional to {@code maximumAdditional}, not to full replay length.
+     */
     private static List<Long> detailedTicks(List<ReplayTimeWindow> windows, ReplayAnalysisRequest request,
-                                            Set<Long> alreadySampled, int maximumAdditional) {
+                                            Set<Long> alreadySampled, int maximumAdditional,
+                                            int detailedSamplesPerSecond) {
         if (maximumAdditional <= 0 || windows.isEmpty()) return List.of();
-        long interval = Math.max(1L, Math.round(20.0 / request.detailedSamplesPerSecond()));
+        long baseInterval = Math.max(1L, Math.round(20.0 / Math.max(1, detailedSamplesPerSecond)));
+        long totalWindowTicks = windows.stream()
+                .mapToLong(window -> Math.max(0L, window.endReplayTime() - window.startReplayTime() + 1))
+                .sum();
+        // If windows are huge relative to the budget, stretch the interval so we never overshoot badly.
+        long adaptiveInterval = baseInterval;
+        if (totalWindowTicks > 0 && maximumAdditional > 0) {
+            long needed = Math.max(1L, (long) Math.ceil(totalWindowTicks / (double) maximumAdditional));
+            adaptiveInterval = Math.max(baseInterval, needed);
+        }
+
         LinkedHashSet<Long> ticks = new LinkedHashSet<>();
         for (ReplayTimeWindow window : windows) {
+            long duration = window.endReplayTime() - window.startReplayTime();
+            // Compact windows keep the configured rate; very long ones step farther apart.
+            long interval = duration > 200L ? Math.max(adaptiveInterval, baseInterval * 2L) : adaptiveInterval;
             for (long tick = window.startReplayTime(); tick <= window.endReplayTime(); tick += interval) {
                 if (request.contains(tick) && !alreadySampled.contains(tick)) ticks.add(tick);
                 if (tick > Long.MAX_VALUE - interval) break;
@@ -534,6 +660,9 @@ public final class MontageAnalysisController implements AutoCloseable {
             if (request.contains(window.endReplayTime()) && !alreadySampled.contains(window.endReplayTime())) {
                 ticks.add(window.endReplayTime());
             }
+            // Always keep the window center — useful for event peak framing.
+            long center = window.startReplayTime() + Math.max(0L, duration / 2L);
+            if (request.contains(center) && !alreadySampled.contains(center)) ticks.add(center);
         }
         return capEvenly(ticks.stream().sorted().toList(), maximumAdditional);
     }

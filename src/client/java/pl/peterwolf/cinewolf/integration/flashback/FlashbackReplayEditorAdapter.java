@@ -1,8 +1,10 @@
 package pl.peterwolf.cinewolf.integration.flashback;
 
 import com.moulberry.flashback.Flashback;
+import com.moulberry.flashback.combo_options.MarkerColour;
 import com.moulberry.flashback.editor.ui.ReplayUI;
 import com.moulberry.flashback.playback.ReplayServer;
+import com.moulberry.flashback.record.ReplayMarker;
 import com.moulberry.flashback.state.EditorState;
 import com.moulberry.flashback.state.EditorStateManager;
 import net.minecraft.client.Minecraft;
@@ -10,6 +12,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.EntityHitResult;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import pl.peterwolf.cinewolf.api.ReplayEditorAdapter;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 public final class FlashbackReplayEditorAdapter implements ReplayEditorAdapter {
@@ -48,6 +52,52 @@ public final class FlashbackReplayEditorAdapter implements ReplayEditorAdapter {
     @Override
     public boolean isReplayEditorOpen() {
         return isAvailable() && Flashback.isInReplay() && ReplayUI.isActive() && EditorStateManager.getCurrent() != null;
+    }
+
+    /** True while a Flashback replay world is loaded (editor UI may be closed). */
+    public boolean isInReplay() {
+        return isAvailable() && Flashback.isInReplay() && Flashback.getReplayServer() != null;
+    }
+
+    public boolean isRecording() {
+        return isAvailable() && Flashback.RECORDER != null;
+    }
+
+    /**
+     * Writes a Flashback-native marker so it appears on the replay timeline when possible.
+     * During recording the recorder owns the tick; during replay the current/metadata map is updated.
+     */
+    public boolean writeNativeMarker(long preferredTick, String description, MarkerColour colour) {
+        String label = description == null ? "" : description;
+        int colourValue = colour == null ? MarkerColour.ORANGE.colour : colour.colour;
+        ReplayMarker.MarkerPosition position = cameraMarkerPosition();
+        ReplayMarker marker = new ReplayMarker(colourValue, position, label);
+        try {
+            if (Flashback.RECORDER != null) {
+                Flashback.RECORDER.addMarker(marker);
+                return true;
+            }
+            ReplayServer server = Flashback.getReplayServer();
+            if (server == null || server.getMetadata() == null) return false;
+            if (server.getMetadata().replayMarkers == null) {
+                server.getMetadata().replayMarkers = new TreeMap<>();
+            }
+            int tick = (int) Math.max(0L, Math.min(Integer.MAX_VALUE, preferredTick));
+            server.getMetadata().replayMarkers.put(tick, marker);
+            return true;
+        } catch (RuntimeException exception) {
+            logger.warn("Unable to write Flashback marker at tick {}: {}", preferredTick, exception.toString());
+            return false;
+        }
+    }
+
+    private static ReplayMarker.MarkerPosition cameraMarkerPosition() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.level == null) return null;
+        Vector3f pos = new Vector3f((float) client.player.getX(), (float) client.player.getY(),
+                (float) client.player.getZ());
+        String dimension = client.level.dimension().identifier().toString();
+        return new ReplayMarker.MarkerPosition(pos, dimension);
     }
 
     @Override

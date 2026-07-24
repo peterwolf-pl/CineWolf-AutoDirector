@@ -11,15 +11,24 @@ import java.util.Map;
 import java.util.TreeMap;
 
 public final class CoarseDetailedSampleSelector {
-    private static final long DETAIL_PADDING_TICKS = 20L;
+    private static final long DETAIL_PADDING_TICKS = 16L;
+    /** Prefer short, high-signal pockets; avoid detailing entire long continuous action. */
+    private static final long MAX_SINGLE_WINDOW_TICKS = 200L; // 10 s
+    private static final double DEFAULT_COVERAGE_FRACTION = 0.35;
 
     public SampleSelection select(List<ReplaySample> availableSamples, ReplayAnalysisRequest request,
                                   DetectorThresholds thresholds) {
+        return select(availableSamples, request, thresholds, DEFAULT_COVERAGE_FRACTION);
+    }
+
+    public SampleSelection select(List<ReplaySample> availableSamples, ReplayAnalysisRequest request,
+                                  DetectorThresholds thresholds, double maximumCoverageFraction) {
         List<ReplaySample> inRange = inRange(availableSamples, request.startReplayTime(), request.endReplayTime());
         if (inRange.isEmpty()) return new SampleSelection(List.of(), List.of(), List.of(), List.of());
         List<ReplaySample> coarse = rateLimit(inRange, request.coarseSamplesPerSecond(), true);
-        List<ReplayTimeWindow> windows = candidateWindows(coarse, thresholds,
-                request.startReplayTime(), request.endReplayTime());
+        List<ReplayTimeWindow> windows = prioritizeWindows(
+                candidateWindows(coarse, thresholds, request.startReplayTime(), request.endReplayTime()),
+                coarse, thresholds, request.startReplayTime(), request.endReplayTime(), maximumCoverageFraction);
         List<ReplaySample> detailCandidates = inRange.stream()
                 .filter(sample -> windows.stream().anyMatch(window -> window.contains(sample.replayTime())))
                 .toList();
@@ -85,9 +94,11 @@ public final class CoarseDetailedSampleSelector {
         ReplayTimeWindow current = candidates.getFirst();
         for (int index = 1; index < candidates.size(); index++) {
             ReplayTimeWindow next = candidates.get(index);
-            if (next.startReplayTime() <= current.endReplayTime() + 1) {
-                current = new ReplayTimeWindow(current.startReplayTime(),
-                        Math.max(current.endReplayTime(), next.endReplayTime()));
+            long mergedEnd = Math.max(current.endReplayTime(), next.endReplayTime());
+            boolean adjacent = next.startReplayTime() <= current.endReplayTime() + 1;
+            boolean wouldExceedCap = mergedEnd - current.startReplayTime() > MAX_SINGLE_WINDOW_TICKS;
+            if (adjacent && !wouldExceedCap) {
+                current = new ReplayTimeWindow(current.startReplayTime(), mergedEnd);
             } else {
                 merged.add(current);
                 current = next;
@@ -95,6 +106,63 @@ public final class CoarseDetailedSampleSelector {
         }
         merged.add(current);
         return List.copyOf(merged);
+    }
+
+    /**
+     * Keeps the highest-signal windows first until the coverage budget is spent.
+     * Long continuous activity no longer forces detailing of the whole range.
+     */
+    public static List<ReplayTimeWindow> prioritizeWindows(List<ReplayTimeWindow> windows, List<ReplaySample> coarse,
+                                                           DetectorThresholds thresholds, long rangeStart, long rangeEnd,
+                                                           double coverageFraction) {
+        if (windows == null || windows.isEmpty()) return List.of();
+        long rangeTicks = Math.max(1L, rangeEnd - rangeStart);
+        double fraction = Double.isFinite(coverageFraction) ? Math.max(0.05, Math.min(1.0, coverageFraction)) : 0.35;
+        long budget = Math.max(MAX_SINGLE_WINDOW_TICKS,
+                Math.round(rangeTicks * fraction));
+
+        List<ScoredWindow> scored = new ArrayList<>();
+        for (ReplayTimeWindow window : windows) {
+            double score = scoreWindow(window, coarse, thresholds);
+            scored.add(new ScoredWindow(window, score));
+        }
+        scored.sort(Comparator.comparingDouble(ScoredWindow::score).reversed()
+                .thenComparingLong(value -> value.window().startReplayTime()));
+
+        List<ReplayTimeWindow> selected = new ArrayList<>();
+        long used = 0L;
+        for (ScoredWindow entry : scored) {
+            long duration = entry.window().endReplayTime() - entry.window().startReplayTime();
+            if (duration <= 0) continue;
+            if (used > 0 && used + duration > budget) continue;
+            selected.add(entry.window());
+            used += duration;
+            if (used >= budget) break;
+        }
+        selected.sort(Comparator.comparingLong(ReplayTimeWindow::startReplayTime));
+        return List.copyOf(selected);
+    }
+
+    private static double scoreWindow(ReplayTimeWindow window, List<ReplaySample> coarse,
+                                      DetectorThresholds thresholds) {
+        double score = 1.0;
+        long duration = Math.max(1L, window.endReplayTime() - window.startReplayTime());
+        int signals = 0;
+        int changes = 0;
+        ReplaySample previous = null;
+        for (ReplaySample sample : coarse) {
+            if (!window.contains(sample.replayTime())) continue;
+            if (hasSignals(sample)) signals++;
+            if (previous != null && changed(previous, sample, thresholds)) changes++;
+            previous = sample;
+        }
+        score += signals * 3.0 + changes * 1.5;
+        // Prefer compact pockets over long low-density stretches.
+        score += 40.0 / Math.sqrt(duration);
+        return score;
+    }
+
+    private record ScoredWindow(ReplayTimeWindow window, double score) {
     }
 
     private static boolean changed(ReplaySample previous, ReplaySample current, DetectorThresholds thresholds) {

@@ -30,6 +30,8 @@ import pl.peterwolf.cinewolf.montage.plan.MontagePlan;
 import pl.peterwolf.cinewolf.montage.plan.MontagePlanEditor;
 import pl.peterwolf.cinewolf.montage.plan.MontageWarning;
 import pl.peterwolf.cinewolf.montage.plan.PlannedMontageShot;
+import pl.peterwolf.cinewolf.montage.highlight.MontageHighlight;
+import pl.peterwolf.cinewolf.montage.highlight.MontageHighlightStore;
 import pl.peterwolf.cinewolf.montage.plan.ReplaySourceSegment;
 import pl.peterwolf.cinewolf.config.SourceSegmentConfig;
 import pl.peterwolf.cinewolf.montage.preset.MontagePacing;
@@ -71,6 +73,7 @@ public final class GenerateMontagePanel {
     private final MontagePlanEditor planEditor = new MontagePlanEditor();
     private final MontageProjectManager projectManager = new MontageProjectManager();
     private final Logger logger;
+    private final MontageHighlightStore highlightStore;
     private final ImFloat floatValue = new ImFloat();
     private final ImInt comboValue = new ImInt();
 
@@ -89,6 +92,16 @@ public final class GenerateMontagePanel {
                                 MontagePreviewController previewController,
                                 VerticalSafeAreaOverlay safeAreaOverlay, PreviewController singleShotPreview,
                                 Logger logger) {
+        this(adapter, configManager, analysisController, generationController, previewController,
+                safeAreaOverlay, singleShotPreview, logger, null);
+    }
+
+    public GenerateMontagePanel(FlashbackReplayEditorAdapter adapter, CineWolfConfigManager configManager,
+                                MontageAnalysisController analysisController,
+                                MontageGenerationController generationController,
+                                MontagePreviewController previewController,
+                                VerticalSafeAreaOverlay safeAreaOverlay, PreviewController singleShotPreview,
+                                Logger logger, MontageHighlightStore highlightStore) {
         this.adapter = adapter;
         this.configManager = configManager;
         this.config = configManager.get();
@@ -98,6 +111,7 @@ public final class GenerateMontagePanel {
         this.safeAreaOverlay = safeAreaOverlay;
         this.singleShotPreview = singleShotPreview;
         this.logger = logger;
+        this.highlightStore = highlightStore;
     }
 
     public void render(TargetReference sharedTarget, List<ReplayEditorAdapter.ReplayEntityDescriptor> entities) {
@@ -105,6 +119,7 @@ public final class GenerateMontagePanel {
         invalidateChangedScope(sharedTarget);
         processDeferredActions(sharedTarget);
         renderRange();
+        renderHighlights();
         renderPresetAndOutput();
         renderCoreSettings(sharedTarget);
         renderAdvanced();
@@ -219,6 +234,76 @@ public final class GenerateMontagePanel {
         if (removeIndex >= 0) {
             config.montage.sourceSegments.remove(removeIndex);
             settingsChanged();
+        }
+    }
+
+    private void renderHighlights() {
+        if (highlightStore == null) return;
+        ImGui.separatorText(tr("cinewolf.montage.section.highlights"));
+        ImGui.textWrapped(tr("cinewolf.montage.highlights.help",
+                tr("key.cinewolf.mark_moment"), tr("key.cinewolf.mark_fragment")));
+        if (adapter.isInReplay()) {
+            highlightStore.setActiveReplay(adapter.replayIdentifier());
+        }
+        List<MontageHighlight> highlights = highlightStore.highlightsForActiveReplay();
+        if (highlights.isEmpty()) {
+            ImGui.textDisabled(tr("cinewolf.montage.highlights.empty"));
+            Long pending = highlightStore.pendingFragmentStartTick();
+            if (pending != null) {
+                ImGui.textColored(255, 220, 80, 255, tr("cinewolf.montage.highlights.pending",
+                        timestamp(pending)));
+            }
+            return;
+        }
+        ImGui.textUnformatted(tr("cinewolf.montage.highlights.count", highlights.size()));
+        if (ImGui.button(tr("cinewolf.montage.action.highlights_to_segments"))) {
+            List<ReplaySourceSegment> segments = highlights.stream()
+                    .filter(h -> h.kind() == MontageHighlight.Kind.FRAGMENT
+                            || h.durationTicks() >= 20L)
+                    .map(MontageHighlight::toSourceSegment)
+                    .toList();
+            if (!segments.isEmpty()) {
+                config.montage.setSourceSegments(segments);
+                settingsChanged();
+                showAction(tr("cinewolf.montage.highlights.promoted", segments.size()), NoticeSeverity.INFO);
+            }
+        }
+        tooltip(tr("cinewolf.montage.tooltip.highlights_to_segments"));
+        ImGui.sameLine();
+        if (ImGui.button(tr("cinewolf.montage.action.clear_highlights"))) {
+            highlightStore.clearActive();
+        }
+        tooltip(tr("cinewolf.montage.tooltip.clear_highlights"));
+
+        UUID removeId = null;
+        for (MontageHighlight highlight : highlights) {
+            ImGui.pushID(highlight.id().toString());
+            ImGui.textUnformatted(tr("cinewolf.montage.highlights.row",
+                    highlight.kind().name().toLowerCase(Locale.ROOT),
+                    timestamp(highlight.startTick()),
+                    timestamp(highlight.endTick()),
+                    format(highlight.durationSeconds()),
+                    highlight.label().isBlank() ? "-" : highlight.label()));
+            ImGui.sameLine();
+            if (ImGui.button(tr("cinewolf.montage.action.seek_segment") + "##hl-seek")) {
+                adapter.setReplayPaused(true);
+                adapter.goToReplayTick(highlight.startTick());
+            }
+            ImGui.sameLine();
+            if (ImGui.button(tr("cinewolf.montage.action.add_selection_segment") + "##hl-seg")) {
+                config.montage.addSourceSegment(highlight.startTick(), highlight.endTick(), highlight.label());
+                settingsChanged();
+            }
+            ImGui.sameLine();
+            if (ImGui.button(tr("cinewolf.montage.action.remove_segment") + "##hl-rm")) {
+                removeId = highlight.id();
+            }
+            ImGui.popID();
+        }
+        if (removeId != null) highlightStore.remove(removeId);
+        Long pending = highlightStore.pendingFragmentStartTick();
+        if (pending != null) {
+            ImGui.textColored(255, 220, 80, 255, tr("cinewolf.montage.highlights.pending", timestamp(pending)));
         }
     }
 
@@ -366,8 +451,14 @@ public final class GenerateMontagePanel {
                 1.0, 2.0, 5.0, tr("cinewolf.montage.tooltip.coarse_rate"),
                 value -> settings.coarseSamplesPerSecond = (int) value);
         changed |= number(tr("cinewolf.montage.field.detailed_rate"), settings.detailedSamplesPerSecond,
-                1.0, 10.0, 20.0, tr("cinewolf.montage.tooltip.detailed_rate"),
+                1.0, 4.0, 20.0, tr("cinewolf.montage.tooltip.detailed_rate"),
                 value -> settings.detailedSamplesPerSecond = (int) value);
+        changed |= number(tr("cinewolf.montage.field.max_detailed_samples"), settings.maximumDetailedSamples,
+                20.0, 0.0, 4_000.0, tr("cinewolf.montage.tooltip.max_detailed_samples"),
+                value -> settings.maximumDetailedSamples = (int) value);
+        changed |= number(tr("cinewolf.montage.field.detailed_coverage"), settings.maximumDetailedCoverageFraction,
+                0.05, 0.05, 1.0, tr("cinewolf.montage.tooltip.detailed_coverage"),
+                value -> settings.maximumDetailedCoverageFraction = value);
         changed |= number(tr("cinewolf.montage.field.minimum_speed"), settings.minimumReplaySpeed,
                 0.05, 0.05, 20.0, tr("cinewolf.montage.tooltip.minimum_speed"),
                 value -> settings.minimumReplaySpeed = value);
