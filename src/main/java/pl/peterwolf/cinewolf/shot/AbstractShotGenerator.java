@@ -1,6 +1,7 @@
 package pl.peterwolf.cinewolf.shot;
 
 import pl.peterwolf.cinewolf.camera.CameraLookAtSolver;
+import pl.peterwolf.cinewolf.camera.CameraPathMotionLimiter;
 import pl.peterwolf.cinewolf.camera.CameraPathSimplifier;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.CameraSample;
@@ -21,6 +22,7 @@ import java.util.TreeSet;
 abstract class AbstractShotGenerator {
     protected final CameraLookAtSolver lookAtSolver = new CameraLookAtSolver();
     private final CameraPathSimplifier simplifier = new CameraPathSimplifier();
+    private final CameraPathMotionLimiter motionLimiter = new CameraPathMotionLimiter();
 
     protected ShotValidationResult validateCommon(ShotRequest request, ReplayContext context) {
         List<PathWarning> errors = new ArrayList<>();
@@ -71,10 +73,24 @@ abstract class AbstractShotGenerator {
 
     protected CameraSample sample(ShotRequest request, ReplayContext context, double cinematicTime, long replayTime,
                                   Vec3d cameraPosition, TargetPose targetPose, double previousYaw) {
+        return sample(request, context, cinematicTime, replayTime, cameraPosition, targetPose,
+                previousYaw, Double.NaN, 1.0 / 12.0);
+    }
+
+    protected CameraSample sample(ShotRequest request, ReplayContext context, double cinematicTime, long replayTime,
+                                  Vec3d cameraPosition, TargetPose targetPose, double previousYaw,
+                                  double previousPitch, double deltaSeconds) {
         long lookAheadTick = Math.min(request.replayEndTime(), replayTime + Math.round(request.lookAheadSeconds() * 20.0));
         Vec3d focus = context.targetPoseResolver().resolve(request.target(), lookAheadTick)
                 .map(TargetPose::focusPosition).orElse(targetPose.focusPosition());
-        CameraLookAtSolver.Orientation orientation = lookAtSolver.solve(cameraPosition, focus, previousYaw);
+        double maxYawRate = CameraLookAtSolver.DEFAULT_MAX_YAW_DEGREES_PER_SECOND;
+        double maxPitchRate = CameraLookAtSolver.DEFAULT_MAX_PITCH_DEGREES_PER_SECOND;
+        if (request.shotType().isDynamicTracking()) {
+            maxYawRate = 140.0;
+            maxPitchRate = 95.0;
+        }
+        CameraLookAtSolver.Orientation orientation = lookAtSolver.solve(cameraPosition, focus, previousYaw,
+                previousPitch, deltaSeconds, maxYawRate, maxPitchRate);
         return new CameraSample(cinematicTime, replayTime, cameraPosition, orientation.quaternion(),
                 orientation.yaw(), orientation.pitch(), orientation.roll(), request.fov(), focus,
                 targetPose.discontinuity() || orientation.degenerate());
@@ -89,22 +105,23 @@ abstract class AbstractShotGenerator {
                 break;
             }
         }
-        List<CameraSample> simplified = simplifier.simplify(samples, context.samplingSettings());
+        List<CameraSample> limited = motionLimiter.limit(samples);
+        List<CameraSample> simplified = simplifier.simplify(limited, context.samplingSettings());
         if (simplified.size() > context.samplingSettings().maximumKeyframes()) {
             warnings.add(error("keyframe_limit", "Simplified path exceeds the configured safe keyframe limit"));
         }
 
         double length = 0.0;
         double maximumSpeed = 0.0;
-        for (int i = 1; i < samples.size(); i++) {
-            double distance = samples.get(i - 1).position().distanceTo(samples.get(i).position());
-            double delta = samples.get(i).cinematicTimeSeconds() - samples.get(i - 1).cinematicTimeSeconds();
+        for (int i = 1; i < limited.size(); i++) {
+            double distance = limited.get(i - 1).position().distanceTo(limited.get(i).position());
+            double delta = limited.get(i).cinematicTimeSeconds() - limited.get(i - 1).cinematicTimeSeconds();
             length += distance;
             if (delta > 0.0) maximumSpeed = Math.max(maximumSpeed, distance / delta);
         }
-        PathStatistics statistics = new PathStatistics(samples.size(), simplified.size(), length, maximumSpeed,
+        PathStatistics statistics = new PathStatistics(limited.size(), simplified.size(), length, maximumSpeed,
                 request.revolutions());
-        return new CameraPathPlan(request, samples, simplified, warnings, statistics);
+        return new CameraPathPlan(request, limited, simplified, warnings, statistics);
     }
 
     protected int sampleCount(ShotRequest request, SamplingSettings settings) {

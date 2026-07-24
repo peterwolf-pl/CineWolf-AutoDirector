@@ -82,6 +82,28 @@ class CameraPathSimplifierTest {
         assertFalse(constrained.discontinuity());
     }
 
+    @Test
+    void preservesLookAtCurvatureEvenWhenCameraIsStraight() {
+        List<CameraSample> samples = List.of(
+                sample(0.0, new Vec3d(0, 2, -6), 0, 0, 70, new Vec3d(0, 1, 0)),
+                sample(0.5, new Vec3d(5, 2, -6), 0, 0, 70, new Vec3d(5, 4, 0)),
+                sample(1.0, new Vec3d(10, 2, -6), 0, 0, 70, new Vec3d(10, 1, 0)));
+        List<CameraSample> simplified = new CameraPathSimplifier().simplify(samples,
+                new SamplingSettings(12, 100, 100, 0.5, 180.0, 10.0, 5.0));
+        assertTrue(simplified.size() >= 3, "look-at bend must keep the middle keyframe");
+    }
+
+    @Test
+    void preservesHighAngularSpeedSamples() {
+        List<CameraSample> samples = List.of(
+                sample(0.0, new Vec3d(0, 2, -4), 0, 0, 70, new Vec3d(0, 2, 0)),
+                sample(0.1, new Vec3d(0.2, 2, -4), 25, 0, 70, new Vec3d(0.5, 2, 0)),
+                sample(1.0, new Vec3d(2, 2, -4), 30, 0, 70, new Vec3d(2, 2, 0)));
+        List<CameraSample> simplified = new CameraPathSimplifier().simplify(samples,
+                new SamplingSettings(12, 100, 100, 1.0, 180.0, 10.0, 5.0));
+        assertEquals(3, simplified.size());
+    }
+
     private static List<CameraSample> lineSamples() {
         List<CameraSample> samples = new ArrayList<>();
         for (int i = 0; i <= 10; i++) samples.add(sample(i / 10.0, new Vec3d(i, 0, 0), 0.0));
@@ -96,5 +118,11 @@ class CameraPathSimplifierTest {
     private static CameraSample sample(double time, Vec3d position, double yaw, double pitch, double fov) {
         return new CameraSample(time, Math.round(time * 20), position, new Quaternionf(), yaw, pitch, 0, fov,
                 new Vec3d(0, 1, 0), false);
+    }
+
+    private static CameraSample sample(double time, Vec3d position, double yaw, double pitch, double fov,
+                                       Vec3d lookAt) {
+        return new CameraSample(time, Math.round(time * 20), position, new Quaternionf(), yaw, pitch, 0, fov,
+                lookAt, false);
     }
 }

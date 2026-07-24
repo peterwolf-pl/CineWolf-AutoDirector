@@ -22,7 +22,7 @@ public record SamplingSettings(
     }
 
     public static SamplingSettings defaults() {
-        return new SamplingSettings(12, 4096, 512, 0.08, 0.45, 0.1, 1.0,
+        return new SamplingSettings(12, 4096, 512, 0.05, 0.35, 0.08, 0.5,
                 PathSmoothingSettings.defaults());
     }
 }

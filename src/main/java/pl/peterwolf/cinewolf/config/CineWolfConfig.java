@@ -27,10 +27,10 @@ public final class CineWolfConfig {
     public int samplesPerSecond = 12;
     public int maximumSamples = 4096;
     public int maximumKeyframes = 512;
-    public double positionTolerance = 0.08;
-    public double rotationToleranceDegrees = 0.45;
-    public double fovTolerance = 0.1;
-    public double maximumKeyframeIntervalSeconds = 1.0;
+    public double positionTolerance = 0.05;
+    public double rotationToleranceDegrees = 0.35;
+    public double fovTolerance = 0.08;
+    public double maximumKeyframeIntervalSeconds = 0.5;
     public PathSmoothingConfig pathSmoothing = new PathSmoothingConfig();
     public MontageConfig montage = new MontageConfig();
 
@@ -42,10 +42,10 @@ public final class CineWolfConfig {
         samplesPerSecond = Math.max(8, Math.min(20, samplesPerSecond));
         maximumSamples = Math.max(64, Math.min(20_000, maximumSamples));
         maximumKeyframes = Math.max(16, Math.min(2_000, maximumKeyframes));
-        positionTolerance = positiveOr(positionTolerance, 0.08);
-        rotationToleranceDegrees = positiveOr(rotationToleranceDegrees, 0.45);
-        fovTolerance = positiveOr(fovTolerance, 0.1);
-        maximumKeyframeIntervalSeconds = positiveOr(maximumKeyframeIntervalSeconds, 1.0);
+        positionTolerance = positiveOr(positionTolerance, 0.05);
+        rotationToleranceDegrees = positiveOr(rotationToleranceDegrees, 0.35);
+        fovTolerance = positiveOr(fovTolerance, 0.08);
+        maximumKeyframeIntervalSeconds = positiveOr(maximumKeyframeIntervalSeconds, 0.5);
         if (pathSmoothing == null) pathSmoothing = new PathSmoothingConfig();
         pathSmoothing.normalize();
         if (montage == null) montage = new MontageConfig();

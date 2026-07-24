@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.6 - 2026-07-24
+
+- Reduced intra-shot camera jumps from keyframe simplification, flight tracking, collision recovery, and look-at whip.
+- `CameraPathSimplifier` now preserves look-at curvature, high angular-speed samples, and neighbors of collision-constrained keys.
+- Added `CameraPathMotionLimiter` (position/look-at step caps + rate-limited yaw/pitch) after generation and after collision.
+- Follow / Chase / Side Tracking: rate-limited direction changes, camera step caps at high speed, smoother chase distance/FOV.
+- Look-at solver: near-pass damping and configurable max yaw/pitch rates.
+- Collision continuity: slower recovery, longer hysteresis, rate-limited reorientation after multi-strategy correction.
+- Tighter default keyframe tolerances and max keyframe interval (0.5 s) for smoother Flashback playback.
+- Hard montage cuts between shots are unchanged.
+
 ## 1.3.5 - 2026-07-22
 
 - Added nine shot generators: Reveal, Crane Up, Crane Down, Spiral, Static Tracking, Side Tracking, Chase, Close Detail, and Vehicle Profile.

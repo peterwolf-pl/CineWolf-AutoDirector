@@ -7,6 +7,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import pl.peterwolf.cinewolf.api.CollisionResolver;
 import pl.peterwolf.cinewolf.camera.CameraLookAtSolver;
+import pl.peterwolf.cinewolf.camera.CameraPathMotionLimiter;
 import pl.peterwolf.cinewolf.camera.CollisionPathContinuity;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.CameraSample;
@@ -22,6 +23,7 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
     private final CollisionPathContinuity pathContinuity = new CollisionPathContinuity();
     private final pl.peterwolf.cinewolf.camera.CollisionStrategyResolver strategyResolver =
             new pl.peterwolf.cinewolf.camera.CollisionStrategyResolver();
+    private final CameraPathMotionLimiter motionLimiter = new CameraPathMotionLimiter();
 
     @Override
     public CollisionResolutionResult resolve(CameraPathPlan originalPath, CollisionContext context,
@@ -77,7 +79,8 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
             boolean moved = position.distanceTo(sample.position()) > 1.0e-6;
             if (moved) changed++;
             CameraLookAtSolver.Orientation orientation = lookAtSolver.solve(position, sample.lookAtPoint(),
-                    temporalState.previousYaw);
+                    temporalState.previousYaw, temporalState.previousPitch, Math.max(1.0e-4, deltaSeconds),
+                    120.0, 85.0);
             adjusted.add(new CameraSample(sample.cinematicTimeSeconds(), sample.replayTime(), position,
                     orientation.quaternion(), orientation.yaw(), orientation.pitch(), orientation.roll(), sample.fov(),
                     sample.lookAtPoint(), sample.discontinuity() || orientation.degenerate(),
@@ -85,6 +88,7 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
             previousAdjusted = position;
             temporalState.previousCinematicTime = sample.cinematicTimeSeconds();
             temporalState.previousYaw = orientation.yaw();
+            temporalState.previousPitch = orientation.pitch();
         }
 
         List<CameraSample> withControls = strategyResolver.insertControlPoints(adjusted, candidate -> {
@@ -98,6 +102,8 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
             }
             return isSafe(level, candidate, focus, clearance);
         }, lookAtSolver);
+        // Re-limit motion after control-point insertion so inserted midpoints cannot whip the camera.
+        List<CameraSample> continuous = motionLimiter.limit(withControls, 12.0, 20.0, 120.0, 85.0);
 
         List<PathWarning> warnings = new ArrayList<>(originalPath.warnings());
         if (changed > 0) {
@@ -109,7 +115,7 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                     "Collision avoidance used a continuity fallback for " + unresolved
                             + " camera samples (last reason: " + lastUnresolvedReason + ")", 0.0));
         }
-        CameraPathPlan path = new CameraPathPlan(originalPath.request(), withControls, withControls, warnings,
+        CameraPathPlan path = new CameraPathPlan(originalPath.request(), continuous, continuous, warnings,
                 originalPath.statistics());
         path = strategyResolver.annotate(path, appliedStrategies);
         return new CollisionResolutionResult(path, changed > 0 || !appliedStrategies.isEmpty(), unresolved == 0
@@ -141,11 +147,13 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
         private final CollisionPathContinuity.State positionState = new CollisionPathContinuity.State();
         private double previousCinematicTime = Double.NaN;
         private double previousYaw = Double.NaN;
+        private double previousPitch = Double.NaN;
 
         public void reset() {
             positionState.reset();
             previousCinematicTime = Double.NaN;
             previousYaw = Double.NaN;
+            previousPitch = Double.NaN;
         }
     }
 }

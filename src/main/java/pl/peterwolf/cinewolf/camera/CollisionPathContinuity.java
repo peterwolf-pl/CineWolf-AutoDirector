@@ -17,10 +17,10 @@ public final class CollisionPathContinuity {
     private static final double RAISE_STEP = 0.25;
     private static final double MAX_RAISE = 6.0;
     private static final double MIN_FOCUS_DISTANCE = 1.0;
-    private static final double RELEASE_DELAY_SECONDS = 0.35;
-    private static final double RECOVERY_SPEED_BLOCKS_PER_SECOND = 1.8;
-    private static final double MAX_CORRECTION_CHANGE_BLOCKS_PER_SECOND = 3.0;
-    private static final double MINIMUM_MAX_CORRECTION_CHANGE = 0.45;
+    private static final double RELEASE_DELAY_SECONDS = 0.45;
+    private static final double RECOVERY_SPEED_BLOCKS_PER_SECOND = 1.35;
+    private static final double MAX_CORRECTION_CHANGE_BLOCKS_PER_SECOND = 2.4;
+    private static final double MINIMUM_MAX_CORRECTION_CHANGE = 0.28;
     private static final double POSITION_EPSILON = 1.0e-6;
     private static final int BOUNDARY_REFINEMENT_STEPS = 7;
     private static final int MAX_SAFETY_PROBES = 512;

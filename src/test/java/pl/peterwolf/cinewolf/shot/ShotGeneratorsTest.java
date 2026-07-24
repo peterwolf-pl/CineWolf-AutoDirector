@@ -70,6 +70,30 @@ class ShotGeneratorsTest {
     }
 
     @Test
+    void followFlightTrackingDoesNotTeleportCameraBetweenSamples() {
+        ShotRequest request = TestFixtures.request(ShotType.FOLLOW, 0.0, 2.0, RotationDirection.CLOCKWISE, 0, 40);
+        CameraPathPlan plan = new FollowShotGenerator().generate(request, TestFixtures.context(tick -> {
+            double t = tick / 20.0;
+            return TestFixtures.pose(new Vec3d(t * 12.0, 8.0 + Math.sin(t * 4.0) * 2.0, t * 2.0),
+                    new Vec3d(12.0, Math.cos(t * 4.0) * 8.0, 2.0), 20.0);
+        }));
+        assertTrue(plan.valid());
+        for (int i = 1; i < plan.samples().size(); i++) {
+            double delta = plan.samples().get(i).cinematicTimeSeconds()
+                    - plan.samples().get(i - 1).cinematicTimeSeconds();
+            double distance = plan.samples().get(i).position()
+                    .distanceTo(plan.samples().get(i - 1).position());
+            // Hard one-sample teleports should be clamped by tracking + motion limiter.
+            assertTrue(distance / Math.max(1.0e-4, delta) < 80.0,
+                    "camera speed too high between samples: " + (distance / delta));
+            double yawDelta = pl.peterwolf.cinewolf.camera.CameraMath.angleDifferenceDegrees(
+                    plan.samples().get(i - 1).yaw(), plan.samples().get(i).yaw());
+            assertTrue(yawDelta / Math.max(1.0e-4, delta) < 220.0,
+                    "yaw rate too high between samples: " + (yawDelta / delta));
+        }
+    }
+
+    @Test
     void flybyTravelsLeftToRightWithoutReversing() {
         ShotRequest request = TestFixtures.request(ShotType.FLYBY);
         CameraPathPlan plan = new FlybyShotGenerator().generate(request,
