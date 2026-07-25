@@ -112,11 +112,12 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
             default -> cameraSpeed;
         };
         if (shotType == ShotType.THIRD_PERSON) {
-            // Camera rides host head — framing distance is unused; keep tiny height for validation.
-            height = prefs.clampHeight(0.0);
-            resolvedDistance = prefs.clampDistance(Math.max(prefs.minimumDistance(), 1.0));
+            // Global eye-offset from montage settings (0 = head level, negative = lower).
+            height = context.thirdPersonHeight();
+            resolvedDistance = Math.max(2.5, Math.min(4.5, size * 2.0));
             resolvedStart = resolvedDistance;
             resolvedEnd = resolvedDistance;
+            resolvedSpeed = clamp(cameraSpeed * 0.9, 1.0, 14.0);
         }
         double lookAhead = request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16
                 ? Math.min(0.12, prefs.lookAheadSeconds())

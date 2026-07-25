@@ -70,6 +70,24 @@ public record PlannedMontageShot(
                 planningReasons, warnings);
     }
 
+    /**
+     * Rebuild timing so {@link #replaySpeed} matches source/output and Flashback mapping validation passes.
+     */
+    public PlannedMontageShot withOutputDuration(double replacementOutputStart, double replacementOutputDuration) {
+        if (!Double.isFinite(replacementOutputDuration) || replacementOutputDuration <= 0.0) {
+            throw new IllegalArgumentException("Output duration must be positive");
+        }
+        double speed = ((sourceReplayEndTime - sourceReplayStartTime) / 20.0) / replacementOutputDuration;
+        ShotRequest request = new ShotRequest(shotRequest.target(), shotRequest.shotType(), shotRequest.diameter(),
+                shotRequest.height(), shotRequest.distance(), shotRequest.startDistance(), shotRequest.endDistance(),
+                shotRequest.rpm(), replacementOutputDuration, shotRequest.startAngleDegrees(), shotRequest.direction(),
+                shotRequest.cameraSpeed(), shotRequest.fov(), shotRequest.easing(), shotRequest.lookAheadSeconds(),
+                sourceReplayStartTime, sourceReplayEndTime, shotRequest.options());
+        return copy(shotId, order, target, shotType, framing, sourceReplayStartTime, sourceReplayEndTime,
+                replacementOutputStart, replacementOutputDuration, speed, request, enabled, locked,
+                planningReasons, warnings);
+    }
+
     public PlannedMontageShot withEnabled(boolean replacement) {
         return copy(shotId, order, target, shotType, framing, sourceReplayStartTime, sourceReplayEndTime,
                 outputStartSeconds, outputDurationSeconds, replaySpeed, shotRequest, replacement, locked,

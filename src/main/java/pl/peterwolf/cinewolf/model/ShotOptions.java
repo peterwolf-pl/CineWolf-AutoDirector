@@ -31,7 +31,10 @@ public record ShotOptions(
         TrackingSide trackingSide,
         DetailTargetType detailTargetType,
         VehicleProfileStyle vehicleProfileStyle,
-        /** Host entity whose head/eyes carry the camera for {@link ShotType#THIRD_PERSON}. */
+        /**
+         * Optional legacy host UUID. {@link ShotType#THIRD_PERSON} no longer requires a second player;
+         * the subject is filmed at eye height. Kept for config/plan compatibility.
+         */
         UUID cameraHostUuid
 ) {
     public static final ShotOptions DEFAULTS = new ShotOptions(

@@ -385,9 +385,32 @@ public final class GenerateMontagePanel {
         tooltip(tr("cinewolf.montage.tooltip.automatic_target"));
         if (ImGui.checkbox(tr("cinewolf.montage.field.third_person"), settings.thirdPersonTracking)) {
             settings.thirdPersonTracking = !settings.thirdPersonTracking;
+            // Keep the shot-type allow-list in sync so planning never silently drops 3rd person.
+            if (settings.thirdPersonTracking) {
+                settings.shotSettings.setEnabled(ShotType.THIRD_PERSON, true);
+            }
             settingsChanged();
         }
         tooltip(tr("cinewolf.montage.tooltip.third_person"));
+        if (settings.thirdPersonTracking) {
+            boolean heightChanged = number(tr("cinewolf.montage.field.third_person_height"),
+                    settings.thirdPersonHeight, 0.05, -2.25, 2.25,
+                    tr("cinewolf.montage.tooltip.third_person_height"),
+                    value -> settings.thirdPersonHeight = value);
+            if (heightChanged) {
+                // Height-only: save config + stamp plan, but do NOT wipe analysis (settingsChanged would).
+                config.montage.normalize();
+                configManager.save();
+                generationController.clear();
+                int updated = applyGlobalThirdPersonHeightToPlan(settings.thirdPersonHeight);
+                if (updated > 0) {
+                    showAction(tr("cinewolf.montage.third_person_height_applied", updated),
+                            NoticeSeverity.SUCCESS);
+                } else {
+                    showAction(tr("cinewolf.montage.third_person_height_saved"), NoticeSeverity.INFO);
+                }
+            }
+        }
 
         MontagePacing[] pacing = MontagePacing.values();
         comboValue.set(settings.pacing.ordinal());
@@ -891,20 +914,27 @@ public final class GenerateMontagePanel {
         RotationDirection[] direction = {request.direction()};
         EasingType[] easing = {request.easing()};
         boolean changed = false;
-        changed |= number(tr("cinewolf.field.height") + "###height-" + shot.shotId(), values[0], 0.25,
-                -64, 256, tr("cinewolf.tooltip.height"), value -> values[0] = value);
         ShotType shotType = request.shotType();
+        String heightTooltip = shotType == ShotType.THIRD_PERSON
+                ? tr("cinewolf.tooltip.height_third_person")
+                : tr("cinewolf.tooltip.height");
+        // 3rd person: height = offset from head/eyes (0 = head). Global setting overrides on Generate.
+        double heightMin = shotType == ShotType.THIRD_PERSON ? -2.25 : -64;
+        double heightMax = shotType == ShotType.THIRD_PERSON ? 2.25 : 256;
+        double heightStep = shotType == ShotType.THIRD_PERSON ? 0.05 : 0.25;
+        changed |= number(tr("cinewolf.field.height") + "###height-" + shot.shotId(), values[0], heightStep,
+                heightMin, heightMax, heightTooltip, value -> values[0] = value);
         if (shotType == ShotType.FOLLOW || shotType == ShotType.FLYBY || shotType == ShotType.CHASE
                 || shotType == ShotType.SIDE_TRACKING || shotType == ShotType.STATIC_TRACKING
                 || shotType == ShotType.CRANE_UP || shotType == ShotType.CRANE_DOWN
                 || shotType == ShotType.CLOSE_DETAIL || shotType == ShotType.VEHICLE_PROFILE
-                || shotType == ShotType.REVEAL) {
+                || shotType == ShotType.REVEAL || shotType == ShotType.THIRD_PERSON) {
             changed |= number(tr("cinewolf.field.distance") + "###distance-" + shot.shotId(), values[1], 0.25,
                     0.25, 512, tr("cinewolf.tooltip.distance"), value -> values[1] = value);
         }
         if (shotType == ShotType.FOLLOW || shotType == ShotType.FLYBY || shotType == ShotType.CHASE
                 || shotType == ShotType.SIDE_TRACKING || shotType == ShotType.VEHICLE_PROFILE
-                || shotType == ShotType.STATIC_TRACKING) {
+                || shotType == ShotType.STATIC_TRACKING || shotType == ShotType.THIRD_PERSON) {
             changed |= number(tr("cinewolf.field.camera_speed") + "###speed-" + shot.shotId(), values[4], 0.25,
                     0.05, 128, tr("cinewolf.tooltip.camera_speed"), value -> values[4] = value);
         }
@@ -959,7 +989,7 @@ public final class GenerateMontagePanel {
         ShotRequest replacement = new ShotRequest(request.target(), request.shotType(), values[2], values[0],
                 values[1], values[6], values[7], values[8], request.durationSeconds(), values[9], direction[0],
                 values[4], values[3], easing[0], values[5],
-                request.replayStartTime(), request.replayEndTime());
+                request.replayStartTime(), request.replayEndTime(), request.options());
         updatePlan(planEditor.replaceRequest(plan, shot.shotId(), replacement, shot.framing(),
                 List.of("montage.reason.manual_parameters")));
     }
@@ -1247,6 +1277,44 @@ public final class GenerateMontagePanel {
         analysisController.setPlan(replacement);
     }
 
+    /**
+     * Stamps global third-person eye-offset onto every THIRD_PERSON shot in the current plan.
+     * @return number of shots updated
+     */
+    private int applyGlobalThirdPersonHeightToPlan(double height) {
+        MontagePlan plan = analysisController.montagePlan();
+        if (plan == null) return 0;
+        double clamped = Math.max(-2.25, Math.min(2.25, height));
+        List<PlannedMontageShot> next = new ArrayList<>(plan.shots().size());
+        int updated = 0;
+        boolean any = false;
+        for (PlannedMontageShot shot : plan.shots()) {
+            if (shot.shotType() != ShotType.THIRD_PERSON) {
+                next.add(shot);
+                continue;
+            }
+            ShotRequest req = shot.shotRequest();
+            if (Math.abs(req.height() - clamped) < 1.0e-9) {
+                next.add(shot);
+                continue;
+            }
+            ShotRequest replacement = new ShotRequest(req.target(), req.shotType(), req.diameter(), clamped,
+                    req.distance(), req.startDistance(), req.endDistance(), req.rpm(), req.durationSeconds(),
+                    req.startAngleDegrees(), req.direction(), req.cameraSpeed(), req.fov(), req.easing(),
+                    req.lookAheadSeconds(), req.replayStartTime(), req.replayEndTime(), req.options());
+            next.add(shot.withRequest(replacement, shot.framing(),
+                    List.of("montage.reason.global_third_person_height")));
+            updated++;
+            any = true;
+        }
+        if (!any) return 0;
+        MontagePlan rebuilt = new MontagePlan(plan.montageId(), plan.preset(), plan.sourceStartReplayTime(),
+                plan.sourceEndReplayTime(), plan.outputDurationSeconds(), next, plan.transitions(),
+                plan.timeMappings(), plan.statistics(), plan.warnings());
+        analysisController.setPlan(rebuilt);
+        return updated;
+    }
+
     private void settingsChanged() {
         manualEdits.clear();
         clearPendingAction();
@@ -1444,7 +1512,7 @@ public final class GenerateMontagePanel {
         return new ShotRequest(target, type, source.diameter(), source.height(), source.distance(),
                 source.startDistance(), source.endDistance(), source.rpm(), source.durationSeconds(),
                 source.startAngleDegrees(), direction, source.cameraSpeed(), source.fov(), source.easing(),
-                source.lookAheadSeconds(), source.replayStartTime(), source.replayEndTime());
+                source.lookAheadSeconds(), source.replayStartTime(), source.replayEndTime(), source.options());
     }
 
     private static String localizedStatus(String key, List<String> arguments) {

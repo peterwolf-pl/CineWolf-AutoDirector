@@ -113,7 +113,7 @@ public final class MontageTimelinePlanBuilder {
             lastShotEnd = Math.max(lastShotEnd, shotEnd);
         }
 
-        applyHardCutBoundaries(shotPayloads, forcedFovTicks, errors);
+        applyHardCutBoundaries(shotPayloads, forcedFovTicks, errors, warnings);
         TreeMap<Integer, MontageTimelineWritePlan.CameraPoint> camera = new TreeMap<>();
         TreeMap<Integer, MontageTimelineWritePlan.FovPoint> rawFov = new TreeMap<>();
         for (ShotPayload shotPayload : shotPayloads) {
@@ -192,7 +192,7 @@ public final class MontageTimelinePlanBuilder {
     }
 
     private static void applyHardCutBoundaries(List<ShotPayload> shots, Set<Integer> forcedFovTicks,
-                                               List<String> errors) {
+                                               List<String> errors, List<String> warnings) {
         for (int index = 1; index < shots.size(); index++) {
             ShotPayload previous = shots.get(index - 1);
             ShotPayload current = shots.get(index);
@@ -210,7 +210,12 @@ public final class MontageTimelinePlanBuilder {
                 MontageTimelineWritePlan.CameraPoint finalCamera = previous.camera().remove(currentFirst);
                 MontageTimelineWritePlan.FovPoint finalFov = previous.fov().remove(currentFirst);
                 if (holdTick < 0 || finalCamera == null || finalFov == null) {
-                    errors.add("montage.timeline.hard_cut_boundary_too_tight");
+                    // Short abutting source windows: keep shared tick on the previous shot and warn.
+                    // Prefer a usable export over a hard failure after highlight rebalance.
+                    if (finalCamera != null) previous.camera().put(currentFirst, finalCamera);
+                    if (finalFov != null) previous.fov().put(currentFirst, finalFov);
+                    warnings.add("montage.timeline.hard_cut_boundary_too_tight");
+                    forcedFovTicks.add(currentFirst);
                     continue;
                 }
                 previous.camera().put(holdTick, finalCamera.atTickHoldingAfter(holdTick));
@@ -218,7 +223,7 @@ public final class MontageTimelinePlanBuilder {
                 forcedFovTicks.add(holdTick);
                 forcedFovTicks.add(currentFirst);
                 if (previous.camera().size() < 2 || previous.fov().size() < 2) {
-                    errors.add("montage.timeline.hard_cut_boundary_too_tight");
+                    warnings.add("montage.timeline.hard_cut_boundary_too_tight");
                 }
             } else {
                 MontageTimelineWritePlan.CameraPoint finalCamera = previous.camera().get(previousLast);

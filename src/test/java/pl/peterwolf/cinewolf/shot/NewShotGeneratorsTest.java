@@ -3,6 +3,7 @@ package pl.peterwolf.cinewolf.shot;
 import org.junit.jupiter.api.Test;
 import pl.peterwolf.cinewolf.TestFixtures;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
+import pl.peterwolf.cinewolf.model.CameraSample;
 import pl.peterwolf.cinewolf.model.RotationDirection;
 import pl.peterwolf.cinewolf.model.ShotRequest;
 import pl.peterwolf.cinewolf.model.ShotType;
@@ -19,10 +20,6 @@ class NewShotGeneratorsTest {
         for (ShotType type : ShotType.values()) {
             assertTrue(registry.supports(type), type.name());
             ShotRequest request = TestFixtures.request(type);
-            if (type == ShotType.THIRD_PERSON) {
-                // Requires a separate camera-host player — covered by thirdPersonUsesHostHeadAndLooksAtSubject.
-                continue;
-            }
             CameraPathPlan plan = registry.require(type).generate(request,
                     TestFixtures.context(tick -> TestFixtures.pose(new Vec3d(tick * 0.05, 0, 0),
                             new Vec3d(1, 0, 0), 0)));
@@ -78,42 +75,30 @@ class NewShotGeneratorsTest {
     }
 
     @Test
-    void thirdPersonUsesHostHeadAndLooksAtSubject() {
-        java.util.UUID hostId = java.util.UUID.nameUUIDFromBytes("host".getBytes());
-        TargetReference host = new TargetReference(hostId, "minecraft:player", "Host");
+    void thirdPersonIsSidePeerLevelNotRearF5() {
+        // yaw=0 → facing +Z; peer camera should be mostly on ±X, not far behind on -Z.
         ShotRequest request = TestFixtures.request(ShotType.THIRD_PERSON, 0.0, 2.0,
                 RotationDirection.CLOCKWISE, 0, 40);
-        request = request.withOptions(request.options().withCameraHost(hostId));
+        request = new ShotRequest(request.target(), request.shotType(), request.diameter(), 0.0, 3.5,
+                3.5, 3.5, request.rpm(), request.durationSeconds(), request.startAngleDegrees(),
+                request.direction(), request.cameraSpeed(), request.fov(), request.easing(),
+                request.lookAheadSeconds(), request.replayStartTime(), request.replayEndTime());
         CameraPathPlan plan = new ThirdPersonShotGenerator().generate(request,
-                TestFixtures.context(tick -> {
-                    // subject moves on X; host stands aside
-                    if (tick % 2 == 0) {
-                        // resolver is multi in production; here single map — generator resolves host via options
-                    }
-                    return TestFixtures.pose(new Vec3d(tick * 0.1, 0, 0), Vec3d.ZERO, 0);
-                }));
-        // Without multi-target poses host is missing → expect host_missing or samples via fallback path
-        // Use multi resolver:
-        java.util.Map<java.util.UUID, java.util.Map<Long, pl.peterwolf.cinewolf.model.TargetPose>> multi =
-                new java.util.HashMap<>();
-        java.util.Map<Long, pl.peterwolf.cinewolf.model.TargetPose> subject = new java.util.TreeMap<>();
-        java.util.Map<Long, pl.peterwolf.cinewolf.model.TargetPose> hostPoses = new java.util.TreeMap<>();
-        for (long tick = 0; tick <= 40; tick += 2) {
-            subject.put(tick, TestFixtures.pose(new Vec3d(tick * 0.1, 0, 0), Vec3d.ZERO, 0));
-            hostPoses.put(tick, TestFixtures.pose(new Vec3d(-2, 0, -2), Vec3d.ZERO, 90));
-        }
-        multi.put(TestFixtures.TARGET.uuid(), subject);
-        multi.put(hostId, hostPoses);
-        plan = new ThirdPersonShotGenerator().generate(request,
-                new pl.peterwolf.cinewolf.model.ReplayContext(
-                        new pl.peterwolf.cinewolf.camera.MultiSampledTargetPoseResolver(multi),
-                        pl.peterwolf.cinewolf.model.SamplingSettings.defaults()));
+                TestFixtures.context(tick -> TestFixtures.pose(
+                        new Vec3d(0, 0, tick * 0.05), new Vec3d(0, 0, 1), 0)));
         assertTrue(plan.valid());
         assertFalse(plan.samples().isEmpty());
-        // Camera near host head (focus y ≈ 1.62)
-        assertEquals(-2.0, plan.samples().getFirst().position().x(), 0.5);
-        assertEquals(1.62, plan.samples().getFirst().position().y(), 0.2);
-        assertTrue(plan.warnings().stream().anyMatch(w -> w.code().equals("third_person.host")));
+        CameraSample first = plan.samples().getFirst();
+        assertEquals(1.62, first.position().y(), 0.05, "camera Y must equal head height");
+        assertTrue(Math.abs(first.pitch()) <= 6.0 + 1.0e-6, "pitch must stay near level: " + first.pitch());
+        // Mostly lateral (side), not pure rear F5.
+        double lateral = Math.abs(first.position().x());
+        double behind = Math.abs(first.position().z()); // subject at z≈0, facing +Z; behind is -Z
+        // Camera near subject on XZ plane.
+        assertTrue(first.position().distanceTo(new Vec3d(0, 1.62, 0)) < 6.0);
+        assertTrue(lateral > behind * 0.8,
+                "expected side peer placement, got lateral=" + lateral + " behind=" + behind);
+        assertTrue(plan.warnings().stream().anyMatch(w -> w.code().equals("third_person.player_level")));
     }
 
     @Test

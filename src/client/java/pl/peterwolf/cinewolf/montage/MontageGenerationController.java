@@ -17,6 +17,7 @@ import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackWorldCollisionResolver;
 import pl.peterwolf.cinewolf.montage.analysis.IndoorSceneHeuristics;
 import pl.peterwolf.cinewolf.montage.preset.VerticalComposition;
+import pl.peterwolf.cinewolf.model.ShotRequest;
 import pl.peterwolf.cinewolf.model.ShotType;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.CameraSample;
@@ -109,35 +110,23 @@ public final class MontageGenerationController implements AutoCloseable {
             for (PlannedMontageShot shot : current.plan.shots()) {
                 if (current.id != generations.get()) return;
                 if (!shot.enabled()) continue;
+                ShotRequest request = applyGlobalThirdPersonHeight(shot.shotRequest());
                 java.util.Map<UUID, java.util.Map<Long, TargetPose>> posesByTarget = new java.util.HashMap<>();
                 java.util.Map<Long, TargetPose> subjectPoses = new TreeMap<>();
                 current.analysis.samples().forEach(sample -> {
-                    var snapshot = sample.entities().get(shot.target());
-                    if (snapshot != null) subjectPoses.put(sample.replayTime(), snapshot.pose());
+                    TargetPose pose = poseForUuid(sample, shot.target().uuid());
+                    if (pose != null) subjectPoses.put(sample.replayTime(), pose);
                 });
                 posesByTarget.put(shot.target().uuid(), subjectPoses);
-                UUID hostId = shot.shotRequest().options().cameraHostUuid();
-                if (hostId != null && !hostId.equals(shot.target().uuid())) {
-                    java.util.Map<Long, TargetPose> hostPoses = new TreeMap<>();
-                    current.analysis.samples().forEach(sample -> {
-                        for (var entry : sample.entities().entrySet()) {
-                            if (entry.getKey().uuid().equals(hostId) && entry.getValue() != null
-                                    && entry.getValue().pose() != null) {
-                                hostPoses.put(sample.replayTime(), entry.getValue().pose());
-                            }
-                        }
-                    });
-                    if (!hostPoses.isEmpty()) posesByTarget.put(hostId, hostPoses);
-                }
                 ReplayContext context = new ReplayContext(new MultiSampledTargetPoseResolver(posesByTarget),
                         config.samplingSettings(), adaptiveTicks(current.analysis, shot));
-                var validation = pathPlanner.validate(shot.shotRequest(), context);
+                var validation = pathPlanner.validate(request, context);
                 if (!validation.isValid()) {
                     throw new IllegalStateException(validation.messages().stream()
                             .map(warning -> "cinewolf.path_warning." + warning.code())
                             .findFirst().orElse("cinewolf.montage.error.generated_path_invalid"));
                 }
-                CameraPathPlan path = pathPlanner.generate(shot.shotRequest(), context);
+                CameraPathPlan path = pathPlanner.generate(request, context);
                 if (!path.valid()) throw new IllegalStateException("cinewolf.montage.error.generated_path_invalid");
                 paths.add(new GeneratedPath(shot, path));
                 index++;
@@ -370,6 +359,11 @@ public final class MontageGenerationController implements AutoCloseable {
         FlashbackExportAspectSync.apply(config.montage.aspectRatio);
         List<GeneratedPath> validated = new ArrayList<>(paths.size());
         for (GeneratedPath generated : paths) {
+            // Player-level 3rd person must not be pulled back/up for 9:16 framing.
+            if (generated.shot.shotType() == ShotType.THIRD_PERSON) {
+                validated.add(generated);
+                continue;
+            }
             TreeMap<Long, TargetPose> poses = new TreeMap<>();
             current.analysis.samples().forEach(sample -> {
                 var snapshot = sample.entities().get(generated.shot.target());
@@ -536,6 +530,33 @@ public final class MontageGenerationController implements AutoCloseable {
     private void setStatus(String key, Object... arguments) {
         statusKey = key;
         statusArguments = java.util.Arrays.stream(arguments).map(String::valueOf).toList();
+    }
+
+    /**
+     * Global montage.thirdPersonHeight always wins for THIRD_PERSON so the user does not need to
+     * retune every shot by hand — one config value drives path generation.
+     */
+    private ShotRequest applyGlobalThirdPersonHeight(ShotRequest request) {
+        if (request == null || request.shotType() != ShotType.THIRD_PERSON) return request;
+        double height = config.montage.thirdPersonHeight;
+        if (!Double.isFinite(height)) height = 0.0;
+        height = Math.max(-2.25, Math.min(2.25, height));
+        if (Math.abs(request.height() - height) < 1.0e-9) return request;
+        return new ShotRequest(request.target(), request.shotType(), request.diameter(), height,
+                request.distance(), request.startDistance(), request.endDistance(), request.rpm(),
+                request.durationSeconds(), request.startAngleDegrees(), request.direction(),
+                request.cameraSpeed(), request.fov(), request.easing(), request.lookAheadSeconds(),
+                request.replayStartTime(), request.replayEndTime(), request.options());
+    }
+
+    private static TargetPose poseForUuid(pl.peterwolf.cinewolf.montage.analysis.ReplaySample sample, UUID uuid) {
+        for (var entry : sample.entities().entrySet()) {
+            if (entry.getKey().uuid().equals(uuid) && entry.getValue() != null
+                    && entry.getValue().pose() != null) {
+                return entry.getValue().pose();
+            }
+        }
+        return null;
     }
 
     private static List<Long> adaptiveTicks(ReplayAnalysisResult analysis, PlannedMontageShot shot) {

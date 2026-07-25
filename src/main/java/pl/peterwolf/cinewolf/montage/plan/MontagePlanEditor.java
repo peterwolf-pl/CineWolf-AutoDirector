@@ -186,6 +186,7 @@ public final class MontagePlanEditor {
 
     private static PlannedMontageShot applyCreativeTreatment(PlannedMontageShot creative,
                                                               PlannedMontageShot sourceSlot) {
+        // Preserve ShotOptions (e.g. cameraHostUuid for THIRD_PERSON) when rebinding to a new slot.
         ShotRequest request = new ShotRequest(creative.target(), creative.shotType(),
                 creative.shotRequest().diameter(), creative.shotRequest().height(), creative.shotRequest().distance(),
                 creative.shotRequest().startDistance(), creative.shotRequest().endDistance(),
@@ -193,7 +194,8 @@ public final class MontagePlanEditor {
                 creative.shotRequest().startAngleDegrees(), creative.shotRequest().direction(),
                 creative.shotRequest().cameraSpeed(), creative.shotRequest().fov(),
                 creative.shotRequest().easing(), creative.shotRequest().lookAheadSeconds(),
-                sourceSlot.sourceReplayStartTime(), sourceSlot.sourceReplayEndTime());
+                sourceSlot.sourceReplayStartTime(), sourceSlot.sourceReplayEndTime(),
+                creative.shotRequest().options());
         double speed = ((sourceSlot.sourceReplayEndTime() - sourceSlot.sourceReplayStartTime()) / 20.0)
                 / sourceSlot.outputDurationSeconds();
         return new PlannedMontageShot(creative.shotId(), sourceSlot.order(), sourceSlot.sourceEvent(),
@@ -216,10 +218,11 @@ public final class MontagePlanEditor {
 
     private static ShotRequest retimeRequest(ShotRequest request, long sourceStart, long sourceEnd,
                                              double outputDuration) {
+        // Keep ShotOptions (camera host, framing extras) across retime / replace.
         return new ShotRequest(request.target(), request.shotType(), request.diameter(), request.height(),
                 request.distance(), request.startDistance(), request.endDistance(), request.rpm(), outputDuration,
                 request.startAngleDegrees(), request.direction(), request.cameraSpeed(), request.fov(),
-                request.easing(), request.lookAheadSeconds(), sourceStart, sourceEnd);
+                request.easing(), request.lookAheadSeconds(), sourceStart, sourceEnd, request.options());
     }
 
     /** Source time may jump forward between shots; it must not reverse or overlap. */

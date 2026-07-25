@@ -3,7 +3,6 @@ package pl.peterwolf.cinewolf.montage.plan;
 import pl.peterwolf.cinewolf.model.ShotRequest;
 import pl.peterwolf.cinewolf.model.ShotType;
 import pl.peterwolf.cinewolf.model.TargetReference;
-import pl.peterwolf.cinewolf.montage.analysis.CameraHostPicker;
 import pl.peterwolf.cinewolf.montage.analysis.IndoorSceneHeuristics;
 import pl.peterwolf.cinewolf.montage.analysis.RankedReplayTarget;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayAnalysisResult;
@@ -163,7 +162,37 @@ public final class DefaultMontagePlanner implements MontagePlanner {
             return new SegmentShots(shots, Optional.ofNullable(previous));
         }
 
-        ContinuousLayout layout = continuousLayout(candidates, request);
+        ContinuousLayout layout;
+        try {
+            layout = continuousLayout(candidates, request);
+        } catch (IllegalArgumentException continuousFailed) {
+            // Absolute last resort: one short window per best event, ignore strict speed packing.
+            Optional<HighlightLayout> emergency = emergencyHighlightLayout(candidates, request,
+                    Math.max(1, (int) Math.round(request.outputDurationSeconds() * 20.0)),
+                    Math.max(1, (int) Math.ceil(request.minimumShotDuration() * 20.0 - 1.0e-9)),
+                    Math.max(1, (int) Math.floor(request.maximumShotDuration() * 20.0 + 1.0e-9)),
+                    1,
+                    Math.max(1, (int) Math.floor(request.maximumShotDuration() * 20.0
+                            * Math.max(1.0, request.maximumReplaySpeed()) + 1.0e-9)));
+            if (emergency.isEmpty()) {
+                throw continuousFailed;
+            }
+            warnings.add(MontageWarning.warning("montage.warning.emergency_layout",
+                    continuousFailed.getMessage() == null ? "" : continuousFailed.getMessage()));
+            HighlightLayout hl = emergency.orElseThrow();
+            List<PlannedMontageShot> emergencyShots = new ArrayList<>(hl.events().size());
+            ShotType prev = previousType;
+            double cursor = 0.0;
+            for (int index = 0; index < hl.events().size(); index++) {
+                PlannedMontageShot shot = buildShot(hl.events().get(index), hl.sourceStarts()[index],
+                        hl.sourceEnds()[index], hl.outputTicks()[index] / 20.0, cursor, index,
+                        hl.events().size(), prev, target, analysis, request, context, warnings);
+                emergencyShots.add(shot);
+                cursor += shot.outputDurationSeconds();
+                prev = shot.shotType();
+            }
+            return new SegmentShots(emergencyShots, Optional.ofNullable(prev));
+        }
         List<ScoredReplayEvent> selected = layout.events();
         if (selected.stream().map(value -> value.event().eventId()).distinct().count() < selected.size()) {
             warnings.add(MontageWarning.warning("montage.warning.events_reused",
@@ -197,9 +226,8 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16;
         FramingType framing = framing(event.type(), index, shotCount, vertical);
         boolean indoor = IndoorSceneHeuristics.isLikelyIndoor(analysis, target, interval.start, interval.end);
-        var cameraHost = CameraHostPicker.pick(analysis, target, interval.start, interval.end);
-        boolean thirdPersonAvailable = cameraHost.isPresent()
-                && context.availableShotTypes().contains(ShotType.THIRD_PERSON)
+        // 3rd person is always available for a single subject — no second player required.
+        boolean thirdPersonAvailable = context.availableShotTypes().contains(ShotType.THIRD_PERSON)
                 && request.shotPreferences().allows(ShotType.THIRD_PERSON);
         ShotTypeSelection typeSelection = chooseShotType(event.type(), index, shotCount, previousType,
                 request, context, indoor, thirdPersonAvailable);
@@ -213,7 +241,8 @@ public final class DefaultMontagePlanner implements MontagePlanner {
             }
         }
         // Indoor: never use crane/orbit/spiral if a corner/static option is available.
-        if (indoor && (type == ShotType.ORBIT || type == ShotType.SPIRAL
+        // (Skipped when user forced player-level 3rd person tracking.)
+        if (indoor && !context.thirdPersonTracking() && (type == ShotType.ORBIT || type == ShotType.SPIRAL
                 || type == ShotType.CRANE_UP || type == ShotType.CRANE_DOWN || type == ShotType.FLYBY)) {
             if (context.availableShotTypes().contains(ShotType.ROOM_CORNER)
                     && request.shotPreferences().allows(ShotType.ROOM_CORNER)) {
@@ -226,23 +255,23 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 type = ShotType.FOLLOW;
             }
         }
-        // Explicit 3rd-person setting (or availability): ride another player's head when possible.
-        if (thirdPersonAvailable && (context.thirdPersonTracking() || type == ShotType.THIRD_PERSON)) {
+        // Hard force when user enabled head-level 3rd person — ignore per-type preference toggles
+        // (those only limit soft selection; the dedicated checkbox is authoritative).
+        if (context.thirdPersonTracking() && context.availableShotTypes().contains(ShotType.THIRD_PERSON)) {
+            type = ShotType.THIRD_PERSON;
+        } else if (thirdPersonAvailable && type == ShotType.THIRD_PERSON) {
             type = ShotType.THIRD_PERSON;
         }
         ShotRequest shotRequest = templateResolver.createShotRequest(event, target, type, framing,
                 interval.start, interval.end, duration, request.cameraMovementIntensity(), index,
                 analysis, request, context);
-        if (type == ShotType.THIRD_PERSON && cameraHost.isPresent()) {
-            shotRequest = shotRequest.withOptions(shotRequest.options().withCameraHost(cameraHost.get().uuid()));
-        }
         List<String> reasons = new ArrayList<>();
         reasons.add(index == 0 ? "montage.reason.introduction" : index == shotCount - 1
                 ? "montage.reason.outro" : "montage.reason.event_match");
         reasons.add("montage.reason.event." + event.type().name().toLowerCase(java.util.Locale.ROOT));
         reasons.addAll(scored.scoringReasons());
-        if (type == ShotType.THIRD_PERSON && cameraHost.isPresent()) {
-            reasons.add("montage.reason.third_person_host;" + cameraHost.get().displayName());
+        if (type == ShotType.THIRD_PERSON) {
+            reasons.add("montage.reason.third_person_player_level");
         }
         if (indoor) {
             reasons.add("montage.reason.indoor_scene");
@@ -274,24 +303,98 @@ public final class DefaultMontagePlanner implements MontagePlanner {
 
     private MontagePlan finalizePlan(MontageRequest request, MontagePlanningContext context,
                                      List<PlannedMontageShot> shots, List<MontageWarning> warnings) {
-        List<MontageTransition> transitions = transitions(shots);
-        List<MontageTimeMapping> mappings = shots.stream().map(PlannedMontageShot::timeMapping).toList();
-        double actualOutput = shots.isEmpty() ? request.outputDurationSeconds()
-                : shots.getLast().outputEndSeconds();
+        List<PlannedMontageShot> speedSafe = rebalanceShotPlaybackSpeeds(shots, request, warnings);
+        // Validate with effective speed policy: when speed changes are disabled, only 1× is legal.
+        double minSpeed = request.allowReplaySpeedChanges() ? request.minimumReplaySpeed() : 1.0;
+        double maxSpeed = request.allowReplaySpeedChanges() ? request.maximumReplaySpeed() : 1.0;
+        // Validator requires a finite non-negative maxChange (Infinity is rejected as invalid).
+        double maxChange = request.allowReplaySpeedChanges()
+                ? request.maximumReplaySpeedChange()
+                : 1_000_000.0;
+        List<MontageTransition> transitions = transitions(speedSafe);
+        List<MontageTimeMapping> mappings = speedSafe.stream().map(PlannedMontageShot::timeMapping).toList();
+        double actualOutput = speedSafe.isEmpty() ? request.outputDurationSeconds()
+                : speedSafe.getLast().outputEndSeconds();
         MontageTimeMappingValidator.ValidationResult validation = new MontageTimeMappingValidator().validate(
-                mappings, actualOutput, request.minimumReplaySpeed(),
-                request.maximumReplaySpeed(), request.maximumReplaySpeedChange());
+                mappings, actualOutput, minSpeed, maxSpeed, maxChange);
+        if (!validation.valid()) {
+            // Nuclear fallback: force pure 1× on every shot (always satisfies adjacent-change rules).
+            speedSafe = forceOneToOnePlayback(speedSafe, warnings);
+            mappings = speedSafe.stream().map(PlannedMontageShot::timeMapping).toList();
+            actualOutput = speedSafe.isEmpty() ? request.outputDurationSeconds()
+                    : speedSafe.getLast().outputEndSeconds();
+            validation = new MontageTimeMappingValidator().validate(
+                    mappings, actualOutput, 1.0, 1.0, 1_000_000.0);
+        }
         if (!validation.valid()) {
             validation.errors().forEach(code -> warnings.add(new MontageWarning(code,
                     MontageWarning.Severity.ERROR, List.of())));
         }
         validation.warnings().forEach(code -> warnings.add(MontageWarning.warning(code)));
-        double diversity = diversityScorer.score(shots, context.shotDiversity());
-        MontagePlanStatistics statistics = statistics(shots, diversity);
-        UUID montageId = stableMontageId(request, shots);
+        double diversity = diversityScorer.score(speedSafe, context.shotDiversity());
+        MontagePlanStatistics statistics = statistics(speedSafe, diversity);
+        UUID montageId = stableMontageId(request, speedSafe);
         return new MontagePlan(montageId, request.preset(), request.sourceStartReplayTime(),
-                request.sourceEndReplayTime(), actualOutput, shots, transitions, mappings,
+                request.sourceEndReplayTime(), actualOutput, speedSafe, transitions, mappings,
                 statistics, warnings);
+    }
+
+    /**
+     * Ensures each shot's output duration yields a legal replay speed (and smooth adjacent changes).
+     * Highlight / emergency layouts can shrink source windows after output was already allocated.
+     */
+    private static List<PlannedMontageShot> rebalanceShotPlaybackSpeeds(List<PlannedMontageShot> shots,
+                                                                        MontageRequest request,
+                                                                        List<MontageWarning> warnings) {
+        if (shots.isEmpty()) return shots;
+        int count = shots.size();
+        long[] starts = new long[count];
+        long[] ends = new long[count];
+        int[] preferred = new int[count];
+        for (int i = 0; i < count; i++) {
+            PlannedMontageShot shot = shots.get(i);
+            starts[i] = shot.sourceReplayStartTime();
+            ends[i] = shot.sourceReplayEndTime();
+            preferred[i] = Math.max(1, (int) Math.round(shot.outputDurationSeconds() * 20.0));
+        }
+        int[] reconciled = reconcileOutputTicksForWindows(starts, ends, preferred, request);
+        return applyOutputTicks(shots, reconciled, warnings, "montage.warning.playback_speed_rebalanced");
+    }
+
+    private static List<PlannedMontageShot> forceOneToOnePlayback(List<PlannedMontageShot> shots,
+                                                                  List<MontageWarning> warnings) {
+        if (shots.isEmpty()) return shots;
+        int[] oneToOne = new int[shots.size()];
+        for (int i = 0; i < shots.size(); i++) {
+            oneToOne[i] = Math.max(1, (int) (shots.get(i).sourceReplayEndTime()
+                    - shots.get(i).sourceReplayStartTime()));
+        }
+        return applyOutputTicks(shots, oneToOne, warnings, "montage.warning.playback_speed_forced_1x");
+    }
+
+    private static List<PlannedMontageShot> applyOutputTicks(List<PlannedMontageShot> shots, int[] outputTicks,
+                                                             List<MontageWarning> warnings, String warningCode) {
+        List<PlannedMontageShot> result = new ArrayList<>(shots.size());
+        double cursor = 0.0;
+        boolean changed = false;
+        for (int i = 0; i < shots.size(); i++) {
+            double duration = Math.max(1, outputTicks[i]) / 20.0;
+            PlannedMontageShot shot = shots.get(i);
+            if (Math.abs(shot.outputDurationSeconds() - duration) > 1.0e-6
+                    || Math.abs(shot.outputStartSeconds() - cursor) > 1.0e-6
+                    || Math.abs(shot.replaySpeed()
+                    - ((shot.sourceReplayEndTime() - shot.sourceReplayStartTime()) / 20.0) / duration) > 1.0e-5) {
+                changed = true;
+            }
+            // Single mutator — do not chain withOrderAndOutput after (it is redundant and easy to misuse).
+            result.add(shot.withOutputDuration(cursor, duration)
+                    .withOrderAndOutput(i, cursor));
+            cursor += duration;
+        }
+        if (changed) {
+            warnings.add(MontageWarning.warning(warningCode));
+        }
+        return List.copyOf(result);
     }
 
     private static int[] allocateSegmentOutputTicks(List<ReplaySourceSegment> segments, long totalSourceTicks,
@@ -444,14 +547,223 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 }
 
                 Optional<long[][]> windows = fitHighlightWindows(selection, sourceTicks,
-                        request.sourceStartReplayTime(), request.sourceEndReplayTime());
+                        request.sourceStartReplayTime(), request.sourceEndReplayTime(),
+                        minimumSourceTicks);
                 if (windows.isEmpty()) continue;
                 long[] starts = windows.orElseThrow()[0];
                 long[] ends = windows.orElseThrow()[1];
-                return Optional.of(new HighlightLayout(selection, starts, ends, outputTicks));
+                // fitHighlightWindows may shrink source lengths — re-sync output so speeds stay legal.
+                int[] reconciled = reconcileOutputTicksForWindows(starts, ends, outputTicks, request);
+                return Optional.of(new HighlightLayout(selection, starts, ends, reconciled));
             }
         }
+        // Sparse / awkward ranges: still try a tiny emergency pick rather than falling into continuous-only.
+        return emergencyHighlightLayout(candidates, request, totalOutputTicks, minimumOutputTicks,
+                maximumOutputTicks, minimumSourceTicks, maximumSourceTicks);
+    }
+
+    /**
+     * Last-chance highlight layout: fewest shots that fit output duration, shortest source windows
+     * around top-scoring peaks. Prefer success with short clips over hard failure.
+     */
+    private static Optional<HighlightLayout> emergencyHighlightLayout(List<ScoredReplayEvent> candidates,
+                                                                      MontageRequest request,
+                                                                      int totalOutputTicks,
+                                                                      int minimumOutputTicks,
+                                                                      int maximumOutputTicks,
+                                                                      int minimumSourceTicks,
+                                                                      int maximumSourceTicks) {
+        if (candidates.isEmpty()) return Optional.empty();
+        int budget = Math.max(1, totalOutputTicks);
+        int minOut = Math.max(1, minimumOutputTicks);
+        int maxOut = Math.max(minOut, maximumOutputTicks);
+        int maxCount = Math.min(candidates.size(), Math.max(1, budget / minOut));
+        int minCount = Math.max(1, (int) Math.ceil(budget / (double) maxOut));
+        if (minCount > maxCount) {
+            minCount = 1;
+            maxCount = 1;
+            budget = Math.min(budget, maxOut);
+        }
+        List<ScoredReplayEvent> ranked = candidates.stream()
+                .sorted(Comparator.comparingDouble(ScoredReplayEvent::finalScore).reversed()
+                        .thenComparing(value -> value.event().peakReplayTime())
+                        .thenComparing(value -> value.event().eventId()))
+                .toList();
+        for (int count = maxCount; count >= minCount; count--) {
+            if ((long) count * minOut > budget) continue;
+            List<ScoredReplayEvent> base = selectDiverseEvents(ranked, count);
+            if (base.isEmpty()) continue;
+            List<ScoredReplayEvent> selection = chronological(repeatToCount(base, count));
+            int[] outputTicks = allocateOutputTicksByScore(selection, budget, minOut, maxOut);
+            if (outputTicks == null) {
+                outputTicks = new int[count];
+                int baseShare = budget / count;
+                int rem = budget - baseShare * count;
+                for (int i = 0; i < count; i++) {
+                    outputTicks[i] = Math.max(1, baseShare + (i < rem ? 1 : 0));
+                }
+            }
+            int[] sourceTicks = new int[count];
+            for (int i = 0; i < count; i++) {
+                sourceTicks[i] = Math.max(1, Math.min(Math.max(1, maximumSourceTicks),
+                        Math.max(Math.max(1, minimumSourceTicks), outputTicks[i])));
+            }
+            Optional<long[][]> windows = fitHighlightWindows(selection, sourceTicks,
+                    request.sourceStartReplayTime(), request.sourceEndReplayTime(), 1);
+            if (windows.isEmpty()) continue;
+            long[] starts = windows.orElseThrow()[0];
+            long[] ends = windows.orElseThrow()[1];
+            int[] reconciled = reconcileOutputTicksForWindows(starts, ends, outputTicks, request);
+            return Optional.of(new HighlightLayout(selection, starts, ends, reconciled));
+        }
         return Optional.empty();
+    }
+
+    /**
+     * After source windows are finalized (possibly shortened for dense peaks), recompute output ticks so
+     * each shot's replay speed stays within configured bounds and adjacent changes stay smooth.
+     * Always terminates with a legal assignment (falls back to uniform 1× when needed).
+     */
+    private static int[] reconcileOutputTicksForWindows(long[] starts, long[] ends, int[] preferredOutput,
+                                                        MontageRequest request) {
+        int count = starts.length;
+        int[] sourceTicks = new int[count];
+        for (int i = 0; i < count; i++) {
+            sourceTicks[i] = Math.max(1, (int) (ends[i] - starts[i]));
+        }
+        return reconcileOutputTicksForSource(sourceTicks, preferredOutput, request);
+    }
+
+    private static int[] reconcileOutputTicksForSource(int[] sourceTicks, int[] preferredOutput,
+                                                       MontageRequest request) {
+        int count = sourceTicks.length;
+        if (count == 0) return new int[0];
+        // Strict 1× always works for adjacent-change checks (all speeds identical).
+        if (!request.allowReplaySpeedChanges()) {
+            return sourceTicks.clone();
+        }
+        double minSpeed = Math.max(1.0e-3, request.minimumReplaySpeed());
+        double maxSpeed = Math.max(minSpeed, request.maximumReplaySpeed());
+        double maxChange = Math.max(0.0, request.maximumReplaySpeedChange());
+        int[] output = new int[count];
+        for (int i = 0; i < count; i++) {
+            int preferred = preferredOutput != null && preferredOutput.length == count
+                    ? Math.max(1, preferredOutput[i]) : sourceTicks[i];
+            double preferredSpeed = sourceTicks[i] / (double) preferred;
+            double speed = Math.max(minSpeed, Math.min(maxSpeed, preferredSpeed));
+            output[i] = bestOutputTicksForTargetSpeed(sourceTicks[i], speed, minSpeed, maxSpeed);
+        }
+        // Chain speeds so each step stays within maxChange (search integer outs).
+        for (int pass = 0; pass < count * 4 + 2; pass++) {
+            boolean changed = false;
+            for (int i = 1; i < count; i++) {
+                int next = bestOutputTicksNearPrevious(sourceTicks[i], output[i - 1], sourceTicks[i - 1],
+                        maxChange, minSpeed, maxSpeed);
+                if (next != output[i]) {
+                    output[i] = next;
+                    changed = true;
+                }
+            }
+            for (int i = count - 2; i >= 0; i--) {
+                int next = bestOutputTicksNearPrevious(sourceTicks[i], output[i + 1], sourceTicks[i + 1],
+                        maxChange, minSpeed, maxSpeed);
+                if (next != output[i]) {
+                    output[i] = next;
+                    changed = true;
+                }
+            }
+            if (!changed) break;
+        }
+        if (speedsRespectAdjacentLimit(sourceTicks, output, maxChange, minSpeed, maxSpeed)) {
+            return output;
+        }
+        // Guaranteed legal: uniform 1× (or clamped preferred common speed).
+        return forceUniformPlaybackSpeed(sourceTicks, minSpeed, maxSpeed);
+    }
+
+    /** Pick output ticks so speed is as close as possible to target, still in [min,max]. */
+    private static int bestOutputTicksForTargetSpeed(int sourceTicks, double targetSpeed,
+                                                     double minSpeed, double maxSpeed) {
+        double target = Math.max(minSpeed, Math.min(maxSpeed, targetSpeed));
+        int guess = Math.max(1, (int) Math.round(sourceTicks / target));
+        return bestOutputTicksNearPrevious(sourceTicks, guess, sourceTicks, Double.POSITIVE_INFINITY,
+                minSpeed, maxSpeed);
+    }
+
+    /**
+     * Choose output ticks for this shot so its speed is in [min,max] and within {@code maxChange}
+     * of the neighbour's speed (neighbour defined by neighbourOut/neighbourSource).
+     */
+    private static int bestOutputTicksNearPrevious(int sourceTicks, int neighbourOut, int neighbourSource,
+                                                   double maxChange, double minSpeed, double maxSpeed) {
+        double neighbourSpeed = neighbourSource / (double) Math.max(1, neighbourOut);
+        double low = Math.max(minSpeed, neighbourSpeed - maxChange);
+        double high = Math.min(maxSpeed, neighbourSpeed + maxChange);
+        if (low > high) {
+            // Impossible band — snap to neighbour clamped into global bounds.
+            double snap = Math.max(minSpeed, Math.min(maxSpeed, neighbourSpeed));
+            low = high = snap;
+        }
+        // Feasible output tick range for speed in [minSpeed, maxSpeed].
+        int outMax = Math.max(1, (int) Math.floor(sourceTicks / minSpeed + 1.0e-9));
+        int outMin = Math.max(1, (int) Math.ceil(sourceTicks / maxSpeed - 1.0e-9));
+        if (outMin > outMax) {
+            // Degenerate source/bounds: pick outMin.
+            return outMin;
+        }
+        // Also restrict to neighbour band if finite.
+        if (Double.isFinite(maxChange)) {
+            int bandMax = Math.max(1, (int) Math.floor(sourceTicks / low + 1.0e-9));
+            int bandMin = Math.max(1, (int) Math.ceil(sourceTicks / high - 1.0e-9));
+            outMin = Math.max(outMin, bandMin);
+            outMax = Math.min(outMax, bandMax);
+            if (outMin > outMax) {
+                // Integer gap: pick closest legal global out to neighbour speed.
+                outMin = Math.max(1, (int) Math.ceil(sourceTicks / maxSpeed - 1.0e-9));
+                outMax = Math.max(outMin, (int) Math.floor(sourceTicks / minSpeed + 1.0e-9));
+            }
+        }
+        int best = outMin;
+        double bestScore = Double.POSITIVE_INFINITY;
+        double aim = Math.max(low, Math.min(high, neighbourSpeed));
+        for (int out = outMin; out <= outMax; out++) {
+            double speed = sourceTicks / (double) out;
+            double score = Math.abs(speed - aim);
+            if (score < bestScore - 1.0e-15) {
+                bestScore = score;
+                best = out;
+            }
+        }
+        return best;
+    }
+
+    private static boolean speedsRespectAdjacentLimit(int[] sourceTicks, int[] output, double maxChange,
+                                                      double minSpeed, double maxSpeed) {
+        double previous = Double.NaN;
+        for (int i = 0; i < sourceTicks.length; i++) {
+            double speed = sourceTicks[i] / (double) Math.max(1, output[i]);
+            if (speed + 1.0e-5 < minSpeed || speed - 1.0e-5 > maxSpeed) return false;
+            if (Double.isFinite(previous) && Math.abs(speed - previous) > maxChange + 1.0e-5) return false;
+            previous = speed;
+        }
+        return true;
+    }
+
+    /** All shots at the same playback speed (prefer 1×). Adjacent change is always 0. */
+    private static int[] forceUniformPlaybackSpeed(int[] sourceTicks, double minSpeed, double maxSpeed) {
+        double speed = Math.max(minSpeed, Math.min(maxSpeed, 1.0));
+        int[] output = new int[sourceTicks.length];
+        for (int i = 0; i < sourceTicks.length; i++) {
+            output[i] = bestOutputTicksForTargetSpeed(sourceTicks[i], speed, minSpeed, maxSpeed);
+        }
+        // Re-snap each to first shot's actual speed for minimal residual integer drift.
+        if (sourceTicks.length > 0) {
+            double first = sourceTicks[0] / (double) Math.max(1, output[0]);
+            for (int i = 1; i < sourceTicks.length; i++) {
+                output[i] = bestOutputTicksForTargetSpeed(sourceTicks[i], first, minSpeed, maxSpeed);
+            }
+        }
+        return output;
     }
 
     private static int[] allocateOutputTicksByScore(List<ScoredReplayEvent> events, int totalTicks,
@@ -497,38 +809,96 @@ public final class DefaultMontagePlanner implements MontagePlanner {
     /**
      * Places non-overlapping source windows around each event peak. Later windows may start after earlier
      * ones end (source cut / keyframe jump); they may not reverse or overlap.
+     * <p>
+     * Dense peaks are handled by (1) shrinking the previous window so it no longer swallows the next peak,
+     * (2) reducing the current window length down toward {@code minimumLength}, then (3) abutting.
      */
     private static Optional<long[][]> fitHighlightWindows(List<ScoredReplayEvent> events, int[] sourceTicks,
-                                                          long rangeStart, long rangeEnd) {
+                                                          long rangeStart, long rangeEnd, int minimumLength) {
         int count = events.size();
         if (count == 0 || sourceTicks.length != count) return Optional.empty();
+        // At least 4 source ticks so hard-cut boundaries can keep ≥2 editable keys per shot.
+        int minLen = Math.max(4, minimumLength);
         long[] starts = new long[count];
         long[] ends = new long[count];
         long previousEnd = rangeStart;
         for (int index = 0; index < count; index++) {
             long peak = events.get(index).event().peakReplayTime();
-            long length = sourceTicks[index];
-            if (length <= 0 || peak < rangeStart || peak > rangeEnd) return Optional.empty();
-            // start ∈ [peak - length, peak] ∩ [rangeStart, rangeEnd - length] ∩ [previousEnd, +∞)
-            // so the peak stays inside [start, start + length] and windows never reverse/overlap.
-            long lower = Math.max(previousEnd, Math.max(rangeStart, peak - length));
-            long upper = Math.min(peak, rangeEnd - length);
-            if (lower > upper) {
-                // Peak is trapped under the previous window; try a minimal abutment that still covers peak.
-                long abutStart = previousEnd;
-                long abutEnd = abutStart + length;
-                if (abutStart <= peak && peak <= abutEnd && abutEnd <= rangeEnd && abutStart >= rangeStart) {
-                    starts[index] = abutStart;
-                    ends[index] = abutEnd;
-                    previousEnd = abutEnd;
-                    continue;
+            long desired = sourceTicks[index];
+            if (desired <= 0 || peak < rangeStart || peak > rangeEnd) return Optional.empty();
+
+            // If the previous window extends past this peak, shrink it so the peak is reachable without
+            // reversing source order (previous must still contain its own peak).
+            if (index > 0 && previousEnd > peak) {
+                long prevPeak = events.get(index - 1).event().peakReplayTime();
+                if (starts[index - 1] <= prevPeak && prevPeak <= ends[index - 1]) {
+                    long shrunkEnd = Math.max(prevPeak, Math.min(previousEnd, peak));
+                    // Keep at least minLen on previous when possible.
+                    if (shrunkEnd - starts[index - 1] < minLen && prevPeak + minLen <= peak) {
+                        shrunkEnd = Math.min(peak, starts[index - 1] + minLen);
+                        if (shrunkEnd < prevPeak) shrunkEnd = prevPeak;
+                    }
+                    if (shrunkEnd >= prevPeak && shrunkEnd >= starts[index - 1]) {
+                        ends[index - 1] = shrunkEnd;
+                        previousEnd = shrunkEnd;
+                    }
                 }
-                return Optional.empty();
             }
-            long preferred = peak - length / 2L;
-            starts[index] = Math.max(lower, Math.min(upper, preferred));
-            ends[index] = starts[index] + length;
-            previousEnd = ends[index];
+
+            boolean placed = false;
+            long maxLen = Math.min(desired, rangeEnd - rangeStart);
+            for (long length = maxLen; length >= minLen; length--) {
+                // Prefer non-overlapping placement after previousEnd (jumps forward are OK).
+                long lower = Math.max(previousEnd, Math.max(rangeStart, peak - length));
+                long upper = Math.min(peak, rangeEnd - length);
+                if (lower <= upper) {
+                    long preferred = peak - length / 2L;
+                    starts[index] = Math.max(lower, Math.min(upper, preferred));
+                    ends[index] = starts[index] + length;
+                    previousEnd = ends[index];
+                    placed = true;
+                    break;
+                }
+                // Abut previous window if that still covers the peak.
+                if (previousEnd <= peak && previousEnd >= rangeStart
+                        && previousEnd + length <= rangeEnd
+                        && peak <= previousEnd + length) {
+                    starts[index] = previousEnd;
+                    ends[index] = previousEnd + length;
+                    previousEnd = ends[index];
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                // Last resort: minimal window ending at/after peak, starting at previousEnd or peak-centered.
+                long length = minLen;
+                long start = Math.min(peak, Math.max(previousEnd, Math.max(rangeStart, peak - length + 1)));
+                long end = start + length;
+                if (end > rangeEnd) {
+                    end = rangeEnd;
+                    start = Math.max(rangeStart, Math.max(previousEnd, end - length));
+                }
+                if (start > peak || end < peak || start < previousEnd && previousEnd > rangeStart) {
+                    // Independent jump around peak (only if previousEnd already passed — shouldn't).
+                    start = Math.max(rangeStart, Math.min(peak, rangeEnd - length));
+                    end = start + length;
+                    if (end > rangeEnd) {
+                        end = rangeEnd;
+                        start = Math.max(rangeStart, end - length);
+                    }
+                    if (start < previousEnd) {
+                        // Cannot go backwards; force minimal forward window from previousEnd.
+                        start = previousEnd;
+                        end = Math.min(rangeEnd, Math.max(start + length, peak + 1));
+                        if (peak < start || peak > end) return Optional.empty();
+                    }
+                }
+                if (peak < start || peak > end || start < rangeStart || end > rangeEnd) return Optional.empty();
+                starts[index] = start;
+                ends[index] = end;
+                previousEnd = end;
+            }
         }
         return Optional.of(new long[][]{starts, ends});
     }

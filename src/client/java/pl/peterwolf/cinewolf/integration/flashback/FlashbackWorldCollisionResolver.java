@@ -84,7 +84,12 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                 }
             }
 
-            if (!ceilingOnly) {
+            // 3rd person: keep the generator height (feet + height setting). Never lift into an overlook.
+            boolean thirdPerson = originalPath.request() != null
+                    && originalPath.request().shotType() == ShotType.THIRD_PERSON;
+            double lockedCameraY = sample.position().y();
+
+            if (!ceilingOnly && !thirdPerson) {
                 java.util.function.Predicate<Vec3d> safety =
                         candidate -> isSafe(level, candidate, sample.lookAtPoint(), clearance);
                 position = pathContinuity.resolve(sample.position(), sample.lookAtPoint(), clearance,
@@ -114,29 +119,53 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
             }
 
             Vec3d beforeCeiling = position;
-            position = clampUnderCeiling(level, position, sample.lookAtPoint(), clearance);
-            if (position.distanceTo(beforeCeiling) > 1.0e-6) {
-                ceilingClamped++;
-                constrained = true;
+            if (thirdPerson) {
+                // Horizontal-only: pull toward subject if blocked, preserve planned camera Y (height setting).
+                position = resolveThirdPersonHorizontal(level, sample.position(), sample.lookAtPoint(),
+                        clearance);
+                position = new Vec3d(position.x(), lockedCameraY, position.z());
+            } else {
+                position = clampUnderCeiling(level, position, sample.lookAtPoint(), clearance);
+                if (position.distanceTo(beforeCeiling) > 1.0e-6) {
+                    ceilingClamped++;
+                    constrained = true;
+                }
             }
 
             boolean moved = position.distanceTo(sample.position()) > 1.0e-6;
             if (moved) changed++;
-            CameraLookAtSolver.Orientation orientation = lookAtSolver.solve(position, sample.lookAtPoint(),
+            Vec3d lookAt = sample.lookAtPoint();
+            if (thirdPerson) {
+                // Keep look-at at the same Y as camera so collision never invents downward F5 pitch.
+                lookAt = new Vec3d(lookAt.x(), lockedCameraY, lookAt.z());
+            }
+            CameraLookAtSolver.Orientation orientation = lookAtSolver.solve(position, lookAt,
                     temporalState.previousYaw, temporalState.previousPitch, Math.max(1.0e-4, deltaSeconds),
-                    120.0, 85.0);
+                    120.0, thirdPerson ? 20.0 : 85.0);
+            double pitch = orientation.pitch();
+            double yaw = orientation.yaw();
+            if (thirdPerson) {
+                pitch = Math.max(-6.0, Math.min(6.0, pitch));
+            }
+            org.joml.Quaternionf rotation = thirdPerson
+                    ? new org.joml.Quaternionf().rotationYXZ(
+                    (float) Math.toRadians(-yaw), (float) Math.toRadians(pitch), 0.0f).normalize()
+                    : orientation.quaternion();
             adjusted.add(new CameraSample(sample.cinematicTimeSeconds(), sample.replayTime(), position,
-                    orientation.quaternion(), orientation.yaw(), orientation.pitch(), orientation.roll(), sample.fov(),
-                    sample.lookAtPoint(), sample.discontinuity() || orientation.degenerate(),
+                    rotation, yaw, pitch, orientation.roll(), sample.fov(),
+                    lookAt, sample.discontinuity() || orientation.degenerate(),
                     constrained || moved || !resolvedSafely));
             previousAdjusted = position;
             temporalState.previousCinematicTime = sample.cinematicTimeSeconds();
-            temporalState.previousYaw = orientation.yaw();
-            temporalState.previousPitch = orientation.pitch();
+            temporalState.previousYaw = yaw;
+            temporalState.previousPitch = pitch;
         }
 
         List<CameraSample> continuous = adjusted;
-        if (!ceilingOnly) {
+        boolean thirdPersonPath = originalPath.request() != null
+                && originalPath.request().shotType() == ShotType.THIRD_PERSON;
+        // Skip lift-prone control points / motion limiting for player-level 3rd person.
+        if (!ceilingOnly && !thirdPersonPath) {
             List<CameraSample> withControls = strategyResolver.insertControlPoints(adjusted, candidate -> {
                 Vec3d focus = adjusted.isEmpty() ? candidate : adjusted.getFirst().lookAtPoint();
                 for (CameraSample sample : adjusted) {
@@ -191,6 +220,30 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                 unresolved == 0
                         ? (ceilingClamped > 0 ? "Ceiling clearance applied" : "Collision avoidance completed")
                         : "Continuity fallback: " + lastUnresolvedReason);
+    }
+
+    /**
+     * Horizontal-only collision for 3rd person: if the planned eye-level point is inside a block,
+     * pull toward the subject along XZ. Never changes height.
+     */
+    static Vec3d resolveThirdPersonHorizontal(ClientLevel level, Vec3d camera, Vec3d focus, double clearance) {
+        if (level == null || camera == null || !camera.isFinite()) return camera;
+        if (isSafe(level, camera, focus, clearance)) return camera;
+        if (focus == null || !focus.isFinite()) return camera;
+        // Pull toward subject eyes in several steps; keep original Y.
+        for (int step = 1; step <= 8; step++) {
+            double t = step / 8.0;
+            double x = camera.x() + (focus.x() - camera.x()) * t * 0.85;
+            double z = camera.z() + (focus.z() - camera.z()) * t * 0.85;
+            Vec3d candidate = new Vec3d(x, camera.y(), z);
+            if (isSafe(level, candidate, focus, clearance)) return candidate;
+        }
+        // Last resort: stand just behind the eyes on XZ.
+        Vec3d near = new Vec3d(
+                focus.x() + (camera.x() - focus.x()) * 0.15,
+                camera.y(),
+                focus.z() + (camera.z() - focus.z()) * 0.15);
+        return near;
     }
 
     /**

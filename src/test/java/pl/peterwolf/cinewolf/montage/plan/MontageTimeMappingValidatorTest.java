@@ -54,4 +54,15 @@ class MontageTimeMappingValidatorTest {
         assertFalse(result.valid());
         assertTrue(result.errors().contains("montage.mapping.speed_change_too_large"));
     }
+
+    @Test
+    void acceptsUniformOneTimesSpeed() {
+        List<MontageTimeMapping> mappings = List.of(
+                MontageTimeMapping.between(0.0, 2.0, 0, 40),
+                MontageTimeMapping.between(2.0, 5.0, 40, 100),
+                MontageTimeMapping.between(5.0, 6.5, 200, 230));
+        MontageTimeMappingValidator.ValidationResult result = validator.validate(mappings, 6.5, 1.0, 1.0,
+                1_000_000.0);
+        assertTrue(result.valid(), () -> result.errors().toString());
+    }
 }

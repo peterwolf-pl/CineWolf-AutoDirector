@@ -18,10 +18,16 @@ public final class MontageConfig {
     public MontagePacing pacing = MontagePacing.MODERATE;
     public boolean automaticTargetDetection = true;
     /**
-     * When true (and another player exists in the analysis), prefer {@code THIRD_PERSON}:
-     * camera rides the other player's head/eyes and tracks the main subject.
+     * When true, prefer {@code THIRD_PERSON}: peer-level side camera at head height.
+     * No second player is required.
      */
     public boolean thirdPersonTracking = false;
+    /**
+     * Global eye-height offset for {@code THIRD_PERSON} (blocks relative to head/eyes).
+     * {@code 0} = exact head level, negative = lower (e.g. {@code -1.25}). Applied when planning
+     * and when generating third-person paths. Range roughly {@code -2.25} … {@code 2.25}.
+     */
+    public double thirdPersonHeight = 0.0;
     public double cameraMovementIntensity = 0.65;
     public double cutFrequency = 0.65;
     public double minimumShotDuration = 2.5;
@@ -114,6 +120,7 @@ public final class MontageConfig {
         maximumShotDuration = positiveOr(maximumShotDuration, preset.maximumShotDuration(), minimumShotDuration, 300.0);
         if (maximumShotDuration < minimumShotDuration) maximumShotDuration = minimumShotDuration;
         eventSensitivity = clamp(eventSensitivity, 0.6, 0.0, 1.0);
+        thirdPersonHeight = clamp(thirdPersonHeight, 0.0, -2.25, 2.25);
         coarseSamplesPerSecond = Math.max(2, Math.min(5, coarseSamplesPerSecond));
         detailedSamplesPerSecond = Math.max(4, Math.min(20, detailedSamplesPerSecond));
         maximumDetailedSamples = Math.max(0, Math.min(4_000, maximumDetailedSamples));
