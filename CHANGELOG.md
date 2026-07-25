@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.5 - 2026-07-25
+
+- New shot / setting **3rd Person**: camera rides **another player's head/eyes** and tracks the main subject
+  - Generate Montage toggle: “3rd person (from another player)”
+  - auto-picks the nearest/most-present other player in the analysis window as camera host
+  - available as shot type `THIRD_PERSON` for manual selection
+
 ## 2.0.4 - 2026-07-25
 
 - Collision UI now shows **why** samples could not be cleared (probe budget / no safe candidate / continuity, with counts)

@@ -1,6 +1,8 @@
 package pl.peterwolf.cinewolf.model;
 
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Extended shot parameters for version 1.3.5 generators.
@@ -28,7 +30,9 @@ public record ShotOptions(
         RevealDirection revealDirection,
         TrackingSide trackingSide,
         DetailTargetType detailTargetType,
-        VehicleProfileStyle vehicleProfileStyle
+        VehicleProfileStyle vehicleProfileStyle,
+        /** Host entity whose head/eyes carry the camera for {@link ShotType#THIRD_PERSON}. */
+        UUID cameraHostUuid
 ) {
     public static final ShotOptions DEFAULTS = new ShotOptions(
             Double.NaN, Double.NaN, Double.NaN,
@@ -37,7 +41,8 @@ public record ShotOptions(
             1.0, 120.0, 0.15, 0.55, 1.5,
             false, false, true,
             RevealDirection.AUTO, TrackingSide.AUTO,
-            DetailTargetType.AUTO, VehicleProfileStyle.AUTO
+            DetailTargetType.AUTO, VehicleProfileStyle.AUTO,
+            null
     );
 
     public ShotOptions {
@@ -55,6 +60,24 @@ public record ShotOptions(
         microOrbitAmount = finiteNonNegativeOr(microOrbitAmount, 0.15);
         visibilityThreshold = clamp01(visibilityThreshold, 0.55);
         repositionRadius = finiteNonNegativeOr(repositionRadius, 1.5);
+    }
+
+    /** Back-compat constructor without camera host. */
+    public ShotOptions(
+            double startHeight, double endHeight, double endFov,
+            double minimumDistance, double maximumDistance, double velocityDistanceMultiplier,
+            double sideOffset, double forwardOffset, double revolutions,
+            double groundClearance, double angularVelocityLimitDegreesPerSecond,
+            double microOrbitAmount, double visibilityThreshold, double repositionRadius,
+            boolean maintainTargetSize, boolean allowLimitedRepositioning, boolean speedBasedFov,
+            RevealDirection revealDirection, TrackingSide trackingSide,
+            DetailTargetType detailTargetType, VehicleProfileStyle vehicleProfileStyle
+    ) {
+        this(startHeight, endHeight, endFov, minimumDistance, maximumDistance, velocityDistanceMultiplier,
+                sideOffset, forwardOffset, revolutions, groundClearance, angularVelocityLimitDegreesPerSecond,
+                microOrbitAmount, visibilityThreshold, repositionRadius, maintainTargetSize,
+                allowLimitedRepositioning, speedBasedFov, revealDirection, trackingSide, detailTargetType,
+                vehicleProfileStyle, null);
     }
 
     public static ShotOptions defaults() {
@@ -79,15 +102,25 @@ public record ShotOptions(
 
     public ShotOptions withRevealDirection(RevealDirection direction) {
         return copyWith(direction, trackingSide, detailTargetType, vehicleProfileStyle, maintainTargetSize,
-                allowLimitedRepositioning, speedBasedFov);
+                allowLimitedRepositioning, speedBasedFov, cameraHostUuid);
+    }
+
+    public Optional<UUID> cameraHost() {
+        return Optional.ofNullable(cameraHostUuid);
+    }
+
+    public ShotOptions withCameraHost(UUID hostUuid) {
+        return copyWith(revealDirection, trackingSide, detailTargetType, vehicleProfileStyle,
+                maintainTargetSize, allowLimitedRepositioning, speedBasedFov, hostUuid);
     }
 
     private ShotOptions copyWith(RevealDirection reveal, TrackingSide side, DetailTargetType detail,
-                                 VehicleProfileStyle style, boolean maintain, boolean reposition, boolean speedFov) {
+                                 VehicleProfileStyle style, boolean maintain, boolean reposition, boolean speedFov,
+                                 UUID host) {
         return new ShotOptions(startHeight, endHeight, endFov, minimumDistance, maximumDistance,
                 velocityDistanceMultiplier, sideOffset, forwardOffset, revolutions, groundClearance,
                 angularVelocityLimitDegreesPerSecond, microOrbitAmount, visibilityThreshold, repositionRadius,
-                maintain, reposition, speedFov, reveal, side, detail, style);
+                maintain, reposition, speedFov, reveal, side, detail, style, host);
     }
 
     private static double finiteOr(double value, double fallback) {

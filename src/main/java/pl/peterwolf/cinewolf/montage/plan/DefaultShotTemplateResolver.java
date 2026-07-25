@@ -108,9 +108,16 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
                 : rpm;
         double resolvedSpeed = switch (shotType) {
             case CHASE, SIDE_TRACKING -> clamp(cameraSpeed * 1.25, 1.0, 28.0);
-            case STATIC_TRACKING, ROOM_CORNER -> clamp(cameraSpeed * 0.5, 0.5, 8.0);
+            case STATIC_TRACKING, ROOM_CORNER, THIRD_PERSON -> clamp(cameraSpeed * 0.5, 0.5, 8.0);
             default -> cameraSpeed;
         };
+        if (shotType == ShotType.THIRD_PERSON) {
+            // Camera rides host head — framing distance is unused; keep tiny height for validation.
+            height = prefs.clampHeight(0.0);
+            resolvedDistance = prefs.clampDistance(Math.max(prefs.minimumDistance(), 1.0));
+            resolvedStart = resolvedDistance;
+            resolvedEnd = resolvedDistance;
+        }
         double lookAhead = request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16
                 ? Math.min(0.12, prefs.lookAheadSeconds())
                 : prefs.lookAheadSeconds();

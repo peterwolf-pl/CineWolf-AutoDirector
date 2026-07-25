@@ -17,6 +17,11 @@ public final class MontageConfig {
     public OutputAspectRatio aspectRatio = OutputAspectRatio.LANDSCAPE_16_9;
     public MontagePacing pacing = MontagePacing.MODERATE;
     public boolean automaticTargetDetection = true;
+    /**
+     * When true (and another player exists in the analysis), prefer {@code THIRD_PERSON}:
+     * camera rides the other player's head/eyes and tracks the main subject.
+     */
+    public boolean thirdPersonTracking = false;
     public double cameraMovementIntensity = 0.65;
     public double cutFrequency = 0.65;
     public double minimumShotDuration = 2.5;

@@ -46,6 +46,7 @@ public final class ShotGeneratorRegistry {
                 .register(ShotType.SPIRAL, new SpiralShotGenerator())
                 .register(ShotType.STATIC_TRACKING, new StaticTrackingShotGenerator())
                 .register(ShotType.ROOM_CORNER, new RoomCornerShotGenerator())
+                .register(ShotType.THIRD_PERSON, new ThirdPersonShotGenerator())
                 .register(ShotType.SIDE_TRACKING, new SideTrackingShotGenerator())
                 .register(ShotType.CHASE, new ChaseShotGenerator())
                 .register(ShotType.CLOSE_DETAIL, new CloseDetailShotGenerator())

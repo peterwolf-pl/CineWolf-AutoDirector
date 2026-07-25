@@ -383,6 +383,11 @@ public final class GenerateMontagePanel {
             settingsChanged();
         }
         tooltip(tr("cinewolf.montage.tooltip.automatic_target"));
+        if (ImGui.checkbox(tr("cinewolf.montage.field.third_person"), settings.thirdPersonTracking)) {
+            settings.thirdPersonTracking = !settings.thirdPersonTracking;
+            settingsChanged();
+        }
+        tooltip(tr("cinewolf.montage.tooltip.third_person"));
 
         MontagePacing[] pacing = MontagePacing.values();
         comboValue.set(settings.pacing.ordinal());

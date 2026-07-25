@@ -94,7 +94,8 @@ public final class MontageAnalysisController implements AutoCloseable {
         config.montage.normalize();
         var registered = ShotGeneratorRegistry.createDefault().supportedTypes();
         var allowed = config.montage.shotSettings.resolvedAllowedTypes(registered);
-        return new MontagePlanningContext(allowed, config.samplingSettings(), config.montage.shotDiversity);
+        return new MontagePlanningContext(allowed, config.samplingSettings(), config.montage.shotDiversity)
+                .withThirdPersonTracking(config.montage.thirdPersonTracking);
     }
 
     public StartResult start(TargetReference selectedTarget) {

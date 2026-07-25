@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import pl.peterwolf.cinewolf.api.CollisionResolver;
 import pl.peterwolf.cinewolf.camera.CameraPathFinalizer;
 import pl.peterwolf.cinewolf.camera.CameraPathPlanner;
+import pl.peterwolf.cinewolf.camera.MultiSampledTargetPoseResolver;
 import pl.peterwolf.cinewolf.camera.SampledTargetPoseResolver;
 import pl.peterwolf.cinewolf.camera.VerticalFramingCorrector;
 import pl.peterwolf.cinewolf.camera.VerticalFramingValidator;
@@ -108,12 +109,27 @@ public final class MontageGenerationController implements AutoCloseable {
             for (PlannedMontageShot shot : current.plan.shots()) {
                 if (current.id != generations.get()) return;
                 if (!shot.enabled()) continue;
-                TreeMap<Long, TargetPose> poses = new TreeMap<>();
+                java.util.Map<UUID, java.util.Map<Long, TargetPose>> posesByTarget = new java.util.HashMap<>();
+                java.util.Map<Long, TargetPose> subjectPoses = new TreeMap<>();
                 current.analysis.samples().forEach(sample -> {
                     var snapshot = sample.entities().get(shot.target());
-                    if (snapshot != null) poses.put(sample.replayTime(), snapshot.pose());
+                    if (snapshot != null) subjectPoses.put(sample.replayTime(), snapshot.pose());
                 });
-                ReplayContext context = new ReplayContext(new SampledTargetPoseResolver(poses),
+                posesByTarget.put(shot.target().uuid(), subjectPoses);
+                UUID hostId = shot.shotRequest().options().cameraHostUuid();
+                if (hostId != null && !hostId.equals(shot.target().uuid())) {
+                    java.util.Map<Long, TargetPose> hostPoses = new TreeMap<>();
+                    current.analysis.samples().forEach(sample -> {
+                        for (var entry : sample.entities().entrySet()) {
+                            if (entry.getKey().uuid().equals(hostId) && entry.getValue() != null
+                                    && entry.getValue().pose() != null) {
+                                hostPoses.put(sample.replayTime(), entry.getValue().pose());
+                            }
+                        }
+                    });
+                    if (!hostPoses.isEmpty()) posesByTarget.put(hostId, hostPoses);
+                }
+                ReplayContext context = new ReplayContext(new MultiSampledTargetPoseResolver(posesByTarget),
                         config.samplingSettings(), adaptiveTicks(current.analysis, shot));
                 var validation = pathPlanner.validate(shot.shotRequest(), context);
                 if (!validation.isValid()) {

@@ -3,9 +3,11 @@ package pl.peterwolf.cinewolf.montage.plan;
 import pl.peterwolf.cinewolf.model.ShotRequest;
 import pl.peterwolf.cinewolf.model.ShotType;
 import pl.peterwolf.cinewolf.model.TargetReference;
+import pl.peterwolf.cinewolf.montage.analysis.CameraHostPicker;
 import pl.peterwolf.cinewolf.montage.analysis.IndoorSceneHeuristics;
 import pl.peterwolf.cinewolf.montage.analysis.RankedReplayTarget;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayAnalysisResult;
+
 import pl.peterwolf.cinewolf.montage.event.ReplayEvent;
 import pl.peterwolf.cinewolf.montage.event.ReplayEventType;
 import pl.peterwolf.cinewolf.montage.event.ScoredReplayEvent;
@@ -195,8 +197,12 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16;
         FramingType framing = framing(event.type(), index, shotCount, vertical);
         boolean indoor = IndoorSceneHeuristics.isLikelyIndoor(analysis, target, interval.start, interval.end);
+        var cameraHost = CameraHostPicker.pick(analysis, target, interval.start, interval.end);
+        boolean thirdPersonAvailable = cameraHost.isPresent()
+                && context.availableShotTypes().contains(ShotType.THIRD_PERSON)
+                && request.shotPreferences().allows(ShotType.THIRD_PERSON);
         ShotTypeSelection typeSelection = chooseShotType(event.type(), index, shotCount, previousType,
-                request, context, indoor);
+                request, context, indoor, thirdPersonAvailable);
         ShotType type = typeSelection.selected();
         // Prefer center-safe generators on 9:16 when a wide lateral flyby was selected.
         if (vertical && type == ShotType.FLYBY) {
@@ -220,14 +226,24 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 type = ShotType.FOLLOW;
             }
         }
+        // Explicit 3rd-person setting (or availability): ride another player's head when possible.
+        if (thirdPersonAvailable && (context.thirdPersonTracking() || type == ShotType.THIRD_PERSON)) {
+            type = ShotType.THIRD_PERSON;
+        }
         ShotRequest shotRequest = templateResolver.createShotRequest(event, target, type, framing,
                 interval.start, interval.end, duration, request.cameraMovementIntensity(), index,
                 analysis, request, context);
+        if (type == ShotType.THIRD_PERSON && cameraHost.isPresent()) {
+            shotRequest = shotRequest.withOptions(shotRequest.options().withCameraHost(cameraHost.get().uuid()));
+        }
         List<String> reasons = new ArrayList<>();
         reasons.add(index == 0 ? "montage.reason.introduction" : index == shotCount - 1
                 ? "montage.reason.outro" : "montage.reason.event_match");
         reasons.add("montage.reason.event." + event.type().name().toLowerCase(java.util.Locale.ROOT));
         reasons.addAll(scored.scoringReasons());
+        if (type == ShotType.THIRD_PERSON && cameraHost.isPresent()) {
+            reasons.add("montage.reason.third_person_host;" + cameraHost.get().displayName());
+        }
         if (indoor) {
             reasons.add("montage.reason.indoor_scene");
             if (type == ShotType.ROOM_CORNER || type == ShotType.STATIC_TRACKING) {
@@ -861,11 +877,26 @@ public final class DefaultMontagePlanner implements MontagePlanner {
 
     private static ShotTypeSelection chooseShotType(ReplayEventType event, int index, int count, ShotType previous,
                                                     MontageRequest request, MontagePlanningContext context,
-                                                    boolean indoor) {
+                                                    boolean indoor, boolean thirdPersonAvailable) {
         List<ShotType> requested = index == 0 ? request.preset().introTemplate().preferredShotTypes()
                 : index == count - 1 ? request.preset().outroTemplate().preferredShotTypes()
                 : EVENT_SHOTS.getOrDefault(event, List.of(ShotType.FOLLOW, ShotType.ORBIT));
-        if (indoor) {
+        if (context.thirdPersonTracking() && thirdPersonAvailable) {
+            List<ShotType> thirdFirst = new ArrayList<>();
+            thirdFirst.add(ShotType.THIRD_PERSON);
+            for (ShotType type : requested) {
+                if (type != ShotType.THIRD_PERSON) thirdFirst.add(type);
+            }
+            requested = thirdFirst;
+        } else if (thirdPersonAvailable) {
+            // Soft preference: keep third person high but not exclusive.
+            List<ShotType> withThird = new ArrayList<>(requested);
+            if (!withThird.contains(ShotType.THIRD_PERSON)) {
+                withThird.add(Math.min(2, withThird.size()), ShotType.THIRD_PERSON);
+            }
+            requested = withThird;
+        }
+        if (indoor && !context.thirdPersonTracking()) {
             // Prefer fixed indoor cameras over orbit/crane that pierce walls/ceilings.
             List<ShotType> indoorFirst = new ArrayList<>(List.of(
                     ShotType.ROOM_CORNER, ShotType.STATIC_TRACKING, ShotType.FOLLOW,

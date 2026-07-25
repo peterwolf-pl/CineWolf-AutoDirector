@@ -13,6 +13,10 @@ public enum ShotType {
     STATIC_TRACKING("Static Tracking"),
     /** Fixed indoor corner at eye height, tracking the subject (CCTV-style room shot). */
     ROOM_CORNER("Room Corner"),
+    /**
+     * Camera rides another player's head/eyes and looks at the subject (true 3rd-person witness).
+     */
+    THIRD_PERSON("3rd Person"),
     SIDE_TRACKING("Side Tracking"),
     CHASE("Chase"),
     CLOSE_DETAIL("Close Detail"),
@@ -30,7 +34,7 @@ public enum ShotType {
 
     public boolean isDynamicTracking() {
         return this == FOLLOW || this == CHASE || this == SIDE_TRACKING || this == STATIC_TRACKING
-                || this == ROOM_CORNER;
+                || this == ROOM_CORNER || this == THIRD_PERSON;
     }
 
     public boolean prefersVehicleTargets() {
