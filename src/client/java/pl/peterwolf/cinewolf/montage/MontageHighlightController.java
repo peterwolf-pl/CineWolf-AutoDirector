@@ -12,6 +12,7 @@ import pl.peterwolf.cinewolf.montage.highlight.MontageHighlightStore;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Handles hotkeys for marking montage moments/fragments during replay or recording. */
 public final class MontageHighlightController {
@@ -33,18 +34,27 @@ public final class MontageHighlightController {
     }
 
     public void tick() {
-        if (adapter.isInReplay()) {
-            store.setActiveReplay(adapter.replayIdentifier());
-        } else if (adapter.isRecording()) {
-            // Recording has no stable replay UUID until finished; use a session bucket.
-            store.setActiveReplay(java.util.UUID.nameUUIDFromBytes("recording-session".getBytes()));
-        }
+        bindActiveTimeline();
 
         if (!adapter.isInReplay() && !adapter.isRecording()) return;
 
         while (CineWolfKeybinds.MARK_MOMENT.consumeClick()) markMoment();
         while (CineWolfKeybinds.MARK_FRAGMENT.consumeClick()) toggleFragment();
         while (CineWolfKeybinds.CANCEL_FRAGMENT.consumeClick()) cancelFragment();
+    }
+
+    private void bindActiveTimeline() {
+        if (adapter.isInReplay()) {
+            store.setActiveReplay(adapter.replayIdentifier());
+            return;
+        }
+        if (adapter.isRecording()) {
+            // Use Flashback's recording UUID so highlights reappear when the finished replay is opened.
+            UUID recordingId = adapter.recordingReplayIdentifier();
+            store.setActiveReplay(recordingId != null
+                    ? recordingId
+                    : UUID.nameUUIDFromBytes("recording-session".getBytes()));
+        }
     }
 
     private void markMoment() {
@@ -99,9 +109,7 @@ public final class MontageHighlightController {
     }
 
     private long currentTick() {
-        if (adapter.isInReplay()) return adapter.getCurrentReplayTime();
-        // During live recording Flashback stores markers at its own written tick.
-        return adapter.isRecording() ? 0L : -1L;
+        return adapter.getCurrentTimelineTick();
     }
 
     private static String formatSeconds(long tick) {

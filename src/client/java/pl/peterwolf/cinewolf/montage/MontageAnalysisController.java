@@ -20,6 +20,7 @@ import pl.peterwolf.cinewolf.montage.analysis.ReplayMarkerSnapshot;
 import pl.peterwolf.cinewolf.montage.analysis.ReplaySample;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayTimeWindow;
 import pl.peterwolf.cinewolf.montage.event.ReplayEventType;
+import pl.peterwolf.cinewolf.montage.event.detector.ReplayMarkerEventDetector;
 import pl.peterwolf.cinewolf.montage.highlight.MontageHighlight;
 import pl.peterwolf.cinewolf.montage.highlight.MontageHighlightStore;
 import pl.peterwolf.cinewolf.montage.plan.DefaultMontagePlanner;
@@ -120,14 +121,31 @@ public final class MontageAnalysisController implements AutoCloseable {
         }
 
         long id = generations.incrementAndGet();
-        Set<ReplayEventType> enabledTypes = enabledTypes(settings);
+        // H/J/K highlights (and native CineWolf markers) must produce REPLAY_MARKER events for planning.
+        EnumSet<ReplayEventType> enabledTypes = EnumSet.noneOf(ReplayEventType.class);
+        enabledTypes.addAll(enabledTypes(settings));
+        List<ReplayMarkerSnapshot> nativeMarkers = adapter.replayMarkers(analysisStart, analysisEnd);
+        boolean hasStoredHighlights = highlightStore != null
+                && !highlightStore.highlightsFor(adapter.replayIdentifier().toString()).isEmpty();
+        boolean hasUserMarks = hasStoredHighlights
+                || nativeMarkers.stream().anyMatch(marker ->
+                ReplayMarkerEventDetector.isUserHighlightLabel(marker.label()));
+        if (hasUserMarks) {
+            enabledTypes.add(ReplayEventType.REPLAY_MARKER);
+        }
         ReplayAnalysisRequest request = new ReplayAnalysisRequest(analysisStart, analysisEnd, selectedTargets,
-                settings.automaticTargetDetection, enabledTypes, settings.eventSensitivity,
+                settings.automaticTargetDetection, Set.copyOf(enabledTypes), settings.eventSensitivity,
                 settings.coarseSamplesPerSecond, settings.detailedSamplesPerSecond, segments);
         List<ReplayMarkerSnapshot> markers = new ArrayList<>();
         if (settings.includeReplayMarkers) {
-            adapter.replayMarkers(analysisStart, analysisEnd).stream()
+            nativeMarkers.stream()
                     .filter(marker -> request.contains(marker.replayTime()))
+                    .forEach(markers::add);
+        } else {
+            // Even when ambient markers are disabled, keep CineWolf H/J/K markers for the montage.
+            nativeMarkers.stream()
+                    .filter(marker -> request.contains(marker.replayTime()))
+                    .filter(marker -> ReplayMarkerEventDetector.isUserHighlightLabel(marker.label()))
                     .forEach(markers::add);
         }
         // User-marked highlights always participate as synthetic markers + sampling anchors.
@@ -558,27 +576,42 @@ public final class MontageAnalysisController implements AutoCloseable {
     }
 
     private List<ReplayMarkerSnapshot> highlightMarkers(ReplayAnalysisRequest request) {
-        if (highlightStore == null) return List.of();
-        highlightStore.setActiveReplay(adapter.replayIdentifier());
         List<ReplayMarkerSnapshot> result = new ArrayList<>();
-        for (MontageHighlight highlight : highlightStore.highlightsForActiveReplay()) {
-            if (!request.contains(highlight.peakTick())
-                    && !request.contains(highlight.startTick())
-                    && !request.contains(highlight.endTick())) {
-                continue;
+        if (highlightStore != null) {
+            highlightStore.setActiveReplay(adapter.replayIdentifier());
+            for (MontageHighlight highlight : highlightStore.highlightsForActiveReplay()) {
+                if (!request.contains(highlight.peakTick())
+                        && !request.contains(highlight.startTick())
+                        && !request.contains(highlight.endTick())) {
+                    continue;
+                }
+                String label = highlight.label().isBlank()
+                        ? "cinewolf-" + highlight.kind().name().toLowerCase()
+                        : highlight.label();
+                // Prefix keeps detector user_highlight matching even for plain "moment@N" labels.
+                if (!ReplayMarkerEventDetector.isUserHighlightLabel(label)) {
+                    label = "cinewolf-" + label;
+                }
+                UUID id = highlight.id();
+                result.add(new ReplayMarkerSnapshot(id, highlight.peakTick(), label, java.util.Optional.empty()));
+                // Fragment endpoints also act as anchors for coarse sampling.
+                if (highlight.kind() == MontageHighlight.Kind.FRAGMENT) {
+                    result.add(new ReplayMarkerSnapshot(UUID.nameUUIDFromBytes((id + ":start").getBytes()),
+                            highlight.startTick(), label + "-start", java.util.Optional.empty()));
+                    result.add(new ReplayMarkerSnapshot(UUID.nameUUIDFromBytes((id + ":end").getBytes()),
+                            highlight.endTick(), label + "-end", java.util.Optional.empty()));
+                }
             }
-            String label = highlight.label().isBlank()
-                    ? "cinewolf-" + highlight.kind().name().toLowerCase()
-                    : highlight.label();
-            UUID id = highlight.id();
-            result.add(new ReplayMarkerSnapshot(id, highlight.peakTick(), label, java.util.Optional.empty()));
-            // Fragment endpoints also act as anchors for coarse sampling.
-            if (highlight.kind() == MontageHighlight.Kind.FRAGMENT) {
-                result.add(new ReplayMarkerSnapshot(UUID.nameUUIDFromBytes((id + ":start").getBytes()),
-                        highlight.startTick(), label + "-start", java.util.Optional.empty()));
-                result.add(new ReplayMarkerSnapshot(UUID.nameUUIDFromBytes((id + ":end").getBytes()),
-                        highlight.endTick(), label + "-end", java.util.Optional.empty()));
-            }
+        }
+        // Native Flashback markers written during recording (H/J) also seed analysis when store is empty.
+        for (ReplayMarkerSnapshot nativeMarker : adapter.replayMarkers(request.startReplayTime(),
+                request.endReplayTime())) {
+            if (!ReplayMarkerEventDetector.isUserHighlightLabel(nativeMarker.label())) continue;
+            if (!request.contains(nativeMarker.replayTime())) continue;
+            boolean duplicate = result.stream().anyMatch(existing ->
+                    existing.replayTime() == nativeMarker.replayTime()
+                            && existing.label().equals(nativeMarker.label()));
+            if (!duplicate) result.add(nativeMarker);
         }
         return result;
     }
@@ -597,12 +630,22 @@ public final class MontageAnalysisController implements AutoCloseable {
     }
 
     private List<ReplayTimeWindow> highlightWindows(ReplayAnalysisRequest request) {
-        if (highlightStore == null) return List.of();
-        highlightStore.setActiveReplay(adapter.replayIdentifier());
         List<ReplayTimeWindow> windows = new ArrayList<>();
-        for (MontageHighlight highlight : highlightStore.highlightsForActiveReplay()) {
-            long start = Math.max(request.startReplayTime(), highlight.startTick());
-            long end = Math.min(request.endReplayTime(), highlight.endTick());
+        if (highlightStore != null) {
+            highlightStore.setActiveReplay(adapter.replayIdentifier());
+            for (MontageHighlight highlight : highlightStore.highlightsForActiveReplay()) {
+                long start = Math.max(request.startReplayTime(), highlight.startTick());
+                long end = Math.min(request.endReplayTime(), highlight.endTick());
+                if (end > start) windows.add(new ReplayTimeWindow(start, end));
+            }
+        }
+        // ±1.5 s windows around native CineWolf markers (same padding as MARK_MOMENT).
+        final long padding = 30L;
+        for (ReplayMarkerSnapshot nativeMarker : adapter.replayMarkers(request.startReplayTime(),
+                request.endReplayTime())) {
+            if (!ReplayMarkerEventDetector.isUserHighlightLabel(nativeMarker.label())) continue;
+            long start = Math.max(request.startReplayTime(), nativeMarker.replayTime() - padding);
+            long end = Math.min(request.endReplayTime(), nativeMarker.replayTime() + padding);
             if (end > start) windows.add(new ReplayTimeWindow(start, end));
         }
         return windows;

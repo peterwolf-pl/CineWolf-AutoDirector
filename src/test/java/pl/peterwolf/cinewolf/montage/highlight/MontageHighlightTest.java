@@ -2,6 +2,7 @@ package pl.peterwolf.cinewolf.montage.highlight;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import pl.peterwolf.cinewolf.montage.event.detector.ReplayMarkerEventDetector;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MontageHighlightTest {
@@ -21,6 +23,17 @@ class MontageHighlightTest {
         assertEquals(70, moment.startTick());
         assertEquals(130, moment.endTick());
         assertEquals(MontageHighlight.Kind.MOMENT, moment.kind());
+    }
+
+    @Test
+    void userHighlightLabelsMatchHotkeyMarkers() {
+        assertTrue(ReplayMarkerEventDetector.isUserHighlightLabel("CineWolf: moment@120"));
+        assertTrue(ReplayMarkerEventDetector.isUserHighlightLabel("CineWolf fragment start"));
+        assertTrue(ReplayMarkerEventDetector.isUserHighlightLabel("moment@40"));
+        assertTrue(ReplayMarkerEventDetector.isUserHighlightLabel("fragment"));
+        assertTrue(ReplayMarkerEventDetector.isUserHighlightLabel("cinewolf-moment"));
+        assertFalse(ReplayMarkerEventDetector.isUserHighlightLabel("player death"));
+        assertFalse(ReplayMarkerEventDetector.isUserHighlightLabel(""));
     }
 
     @Test

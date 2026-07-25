@@ -16,9 +16,16 @@ public final class DefaultReplayEventScorer implements ReplayEventScorer {
         int occurrences = Math.max(1, context.occurrenceCounts().getOrDefault(event.type(), 1));
         double uniqueness = 1.0 / occurrences;
         double preset = clamp01(context.presetWeights().getOrDefault(event.type(), 1.0));
-        boolean markerNearby = event.type() == ReplayEventType.REPLAY_MARKER || context.replayMarkerTimes().stream()
+        boolean userHighlight = event.evidence().attributes().stream()
+                .anyMatch(attribute -> "user_highlight".equals(attribute.name())
+                        && "true".equalsIgnoreCase(attribute.value()));
+        boolean markerNearby = userHighlight
+                || event.type() == ReplayEventType.REPLAY_MARKER
+                || context.replayMarkerTimes().stream()
                 .anyMatch(time -> Math.abs(time - event.peakReplayTime()) <= MARKER_PROXIMITY_TICKS);
-        double markerBonus = markerNearby ? profile.markerBonus() : 0.0;
+        // H/J/K marks always outrank ambient markers so they survive diversity selection.
+        double markerBonus = userHighlight ? Math.max(profile.markerBonus() * 2.5, 0.45)
+                : markerNearby ? profile.markerBonus() : 0.0;
         boolean selectedTarget = !context.selectedTargets().isEmpty()
                 && event.targets().stream().anyMatch(context.selectedTargets()::contains);
         double targetBonus = selectedTarget ? profile.selectedTargetBonus() : 0.0;
@@ -36,7 +43,10 @@ public final class DefaultReplayEventScorer implements ReplayEventScorer {
         reasons.add(format("cinematic", cinematic, event.magnitude()));
         reasons.add(String.format(Locale.ROOT, "uniqueness=%.4f;occurrences=%d", uniqueness, occurrences));
         reasons.add(String.format(Locale.ROOT, "preset_compatibility=%.4f", preset));
-        if (markerNearby) reasons.add(String.format(Locale.ROOT, "marker_bonus=%.4f", markerBonus));
+        if (markerNearby) {
+            reasons.add(String.format(Locale.ROOT, "marker_bonus=%.4f%s", markerBonus,
+                    userHighlight ? ";user_highlight" : ""));
+        }
         if (selectedTarget) reasons.add(String.format(Locale.ROOT, "selected_target_bonus=%.4f", targetBonus));
         if (repetitionPenalty > 0.0) reasons.add(String.format(Locale.ROOT, "repetition_penalty=%.4f", repetitionPenalty));
         if (technicalRiskPenalty > 0.0) reasons.add(String.format(Locale.ROOT,

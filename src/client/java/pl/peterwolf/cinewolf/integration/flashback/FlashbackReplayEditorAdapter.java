@@ -4,6 +4,8 @@ import com.moulberry.flashback.Flashback;
 import com.moulberry.flashback.combo_options.MarkerColour;
 import com.moulberry.flashback.editor.ui.ReplayUI;
 import com.moulberry.flashback.playback.ReplayServer;
+import com.moulberry.flashback.record.FlashbackMeta;
+import com.moulberry.flashback.record.Recorder;
 import com.moulberry.flashback.record.ReplayMarker;
 import com.moulberry.flashback.state.EditorState;
 import com.moulberry.flashback.state.EditorStateManager;
@@ -21,6 +23,7 @@ import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.TargetPose;
 import pl.peterwolf.cinewolf.model.TargetReference;
 import pl.peterwolf.cinewolf.model.Vec3d;
+import pl.peterwolf.cinewolf.mixin.flashback.RecorderAccessor;
 import pl.peterwolf.cinewolf.mixin.flashback.ReplayServerAccessor;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayEntitySnapshot;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayMarkerSnapshot;
@@ -115,6 +118,54 @@ public final class FlashbackReplayEditorAdapter implements ReplayEditorAdapter {
 
     public boolean isRecording() {
         return isAvailable() && Flashback.RECORDER != null;
+    }
+
+    /**
+     * Current Flashback recorder tick ({@code writtenTicks}), or {@code -1} when not recording.
+     * Matches the tick used by {@link Recorder#addMarker(ReplayMarker)}.
+     */
+    public long getCurrentRecordingTick() {
+        Recorder recorder = Flashback.RECORDER;
+        if (!isAvailable() || recorder == null) return -1L;
+        try {
+            return Math.max(0, ((RecorderAccessor) (Object) recorder).cinewolf$writtenTicks());
+        } catch (RuntimeException exception) {
+            logger.warn("Unable to read Flashback recorder tick: {}", exception.toString());
+            return -1L;
+        }
+    }
+
+    /**
+     * Stable UUID assigned by Flashback when recording starts. Survives into the finished replay metadata.
+     */
+    public UUID recordingReplayIdentifier() {
+        Recorder recorder = Flashback.RECORDER;
+        if (!isAvailable() || recorder == null) return null;
+        try {
+            FlashbackMeta metadata = ((RecorderAccessor) (Object) recorder).cinewolf$metadata();
+            return metadata == null ? null : metadata.replayIdentifier;
+        } catch (RuntimeException exception) {
+            logger.warn("Unable to read Flashback recording identity: {}", exception.toString());
+            return null;
+        }
+    }
+
+    /**
+     * Active timeline identity: open replay UUID, else the in-progress recording UUID.
+     */
+    public UUID activeTimelineIdentifier() {
+        if (isInReplay()) return replayIdentifier();
+        UUID recordingId = recordingReplayIdentifier();
+        return recordingId != null ? recordingId : new UUID(0L, 0L);
+    }
+
+    /**
+     * Current timeline tick for marking: replay playback tick, or live recording tick.
+     */
+    public long getCurrentTimelineTick() {
+        if (isInReplay()) return getCurrentReplayTime();
+        if (isRecording()) return getCurrentRecordingTick();
+        return -1L;
     }
 
     /**

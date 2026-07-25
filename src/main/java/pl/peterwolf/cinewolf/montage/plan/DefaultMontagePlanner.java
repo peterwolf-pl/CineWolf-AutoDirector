@@ -722,6 +722,15 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         List<ScoredReplayEvent> selected = new ArrayList<>();
         Set<UUID> ids = new LinkedHashSet<>();
         Set<ReplayEventType> types = new LinkedHashSet<>();
+        // Pin user H/J/K highlights first so marked moments always appear in the montage when budget allows.
+        for (ScoredReplayEvent candidate : ordered) {
+            if (selected.size() >= count) break;
+            if (!isUserHighlight(candidate)) continue;
+            if (ids.add(candidate.event().eventId())) {
+                selected.add(candidate);
+                types.add(candidate.event().type());
+            }
+        }
         for (ScoredReplayEvent candidate : ordered) {
             if (selected.size() >= count) break;
             if (types.add(candidate.event().type())) {
@@ -734,6 +743,12 @@ public final class DefaultMontagePlanner implements MontagePlanner {
             if (ids.add(candidate.event().eventId())) selected.add(candidate);
         }
         return List.copyOf(selected);
+    }
+
+    private static boolean isUserHighlight(ScoredReplayEvent scored) {
+        return scored.event().evidence().attributes().stream()
+                .anyMatch(attribute -> "user_highlight".equals(attribute.name())
+                        && "true".equalsIgnoreCase(attribute.value()));
     }
 
     private static List<ScoredReplayEvent> repeatToCount(List<ScoredReplayEvent> selected, int count) {

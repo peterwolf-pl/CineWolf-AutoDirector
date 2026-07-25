@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1 - 2026-07-25
+
+- Fixed H/J/K montage marks during live Flashback recording:
+  - moments now use the real recorder tick (`writtenTicks`) instead of always tick `0`
+  - highlights are stored under Flashback’s recording UUID so they reappear when the finished replay is opened
+- User H/J/K moments are force-kept in montage analysis (sampling windows + REPLAY_MARKER events) and pinned first when planning shots
+- Native Flashback markers written by CineWolf (`CineWolf: …` / fragment start-end) feed the montage even if the highlight store is empty or ambient markers are disabled
+
 ## 2.0.0 - 2026-07-24
 
 CineWolf AutoDirector 2.0 is a Flashback-only cinematic production platform.
