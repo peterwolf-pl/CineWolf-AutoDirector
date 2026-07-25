@@ -20,7 +20,12 @@ public final class EventMerger {
             TypePair.of(ReplayEventType.FLIGHT, ReplayEventType.LANDING),
             TypePair.of(ReplayEventType.COMBAT, ReplayEventType.DAMAGE),
             TypePair.of(ReplayEventType.COMBAT, ReplayEventType.DEATH),
-            TypePair.of(ReplayEventType.VEHICLE_MOVEMENT, ReplayEventType.SHARP_TURN)
+            TypePair.of(ReplayEventType.VEHICLE_MOVEMENT, ReplayEventType.SHARP_TURN),
+            TypePair.of(ReplayEventType.TREE_CUTTING, ReplayEventType.BLOCK_DESTRUCTION),
+            TypePair.of(ReplayEventType.MINING, ReplayEventType.BLOCK_DESTRUCTION),
+            TypePair.of(ReplayEventType.FARMING, ReplayEventType.BLOCK_PLACEMENT),
+            TypePair.of(ReplayEventType.FARMING, ReplayEventType.BLOCK_DESTRUCTION),
+            TypePair.of(ReplayEventType.EXPLORATION, ReplayEventType.POSITION_CHANGE)
     );
 
     public List<ReplayEvent> mergeAndDeduplicate(List<ReplayEvent> input, DetectorThresholds thresholds,

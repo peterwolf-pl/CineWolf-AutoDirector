@@ -105,10 +105,10 @@ public final class DefaultSceneSegmenter implements SceneSegmenter {
                 case COMBAT, DAMAGE, DEATH -> SceneType.COMBAT;
                 case VEHICLE_ENTER, VEHICLE_EXIT, VEHICLE_MOVEMENT -> SceneType.VEHICLE;
                 case FLIGHT_START, FLIGHT, LANDING -> SceneType.FLIGHT;
-                case BLOCK_PLACEMENT, BLOCK_DESTRUCTION -> SceneType.BUILDING;
+                case BLOCK_PLACEMENT, BLOCK_DESTRUCTION, TREE_CUTTING, FARMING, MINING -> SceneType.BUILDING;
                 case PAUSE -> SceneType.PAUSE;
                 case POSITION_CHANGE, HIGH_SPEED, ACCELERATION, DECELERATION, SHARP_TURN,
-                        ALTITUDE_GAIN, ALTITUDE_LOSS -> SceneType.MOVEMENT;
+                        ALTITUDE_GAIN, ALTITUDE_LOSS, EXPLORATION -> SceneType.MOVEMENT;
                 case REPLAY_MARKER -> SceneType.ESTABLISHING;
             });
         }

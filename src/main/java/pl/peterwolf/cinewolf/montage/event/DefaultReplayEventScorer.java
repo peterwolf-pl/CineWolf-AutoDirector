@@ -60,7 +60,8 @@ public final class DefaultReplayEventScorer implements ReplayEventScorer {
         double typeScore = switch (event.type()) {
             case COMBAT, DEATH, FLIGHT_START, LANDING -> 0.95;
             case HIGH_SPEED, ACCELERATION, DECELERATION, SHARP_TURN, VEHICLE_MOVEMENT, FLIGHT -> 0.85;
-            case ALTITUDE_GAIN, ALTITUDE_LOSS, BLOCK_PLACEMENT, BLOCK_DESTRUCTION, REPLAY_MARKER -> 0.75;
+            case ALTITUDE_GAIN, ALTITUDE_LOSS, BLOCK_PLACEMENT, BLOCK_DESTRUCTION, TREE_CUTTING, FARMING, MINING,
+                    EXPLORATION, REPLAY_MARKER -> 0.75;
             case DAMAGE, VEHICLE_ENTER, VEHICLE_EXIT, POSITION_CHANGE -> 0.65;
             case PAUSE -> 0.35;
         };

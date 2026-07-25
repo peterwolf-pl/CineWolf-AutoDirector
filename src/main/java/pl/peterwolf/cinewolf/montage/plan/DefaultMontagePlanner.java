@@ -1317,8 +1317,9 @@ public final class DefaultMontagePlanner implements MontagePlanner {
             return vertical ? FramingType.MEDIUM : FramingType.WIDE;
         }
         FramingType base = switch (type) {
-            case COMBAT, DAMAGE, DEATH, PAUSE -> FramingType.CLOSE;
-            case HIGH_SPEED, VEHICLE_MOVEMENT, FLIGHT, ALTITUDE_GAIN, ALTITUDE_LOSS -> FramingType.WIDE;
+            case COMBAT, DAMAGE, DEATH, PAUSE, FARMING, MINING -> FramingType.CLOSE;
+            case HIGH_SPEED, VEHICLE_MOVEMENT, FLIGHT, ALTITUDE_GAIN, ALTITUDE_LOSS, EXPLORATION -> FramingType.WIDE;
+            case TREE_CUTTING -> FramingType.MEDIUM;
             default -> FramingType.MEDIUM;
         };
         if (!vertical) return base;
@@ -1375,6 +1376,10 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         map.put(ReplayEventType.LANDING, List.of(ShotType.CRANE_DOWN, ShotType.FLYBY, ShotType.DOLLY_OUT));
         map.put(ReplayEventType.BLOCK_PLACEMENT, List.of(ShotType.ROOM_CORNER, ShotType.REVEAL, ShotType.ORBIT, ShotType.CRANE_UP, ShotType.DOLLY_OUT));
         map.put(ReplayEventType.BLOCK_DESTRUCTION, List.of(ShotType.ROOM_CORNER, ShotType.ORBIT, ShotType.CLOSE_DETAIL, ShotType.FLYBY));
+        map.put(ReplayEventType.TREE_CUTTING, List.of(ShotType.ORBIT, ShotType.CLOSE_DETAIL, ShotType.FOLLOW, ShotType.ROOM_CORNER, ShotType.FLYBY));
+        map.put(ReplayEventType.FARMING, List.of(ShotType.ROOM_CORNER, ShotType.CLOSE_DETAIL, ShotType.STATIC_TRACKING, ShotType.DOLLY_IN, ShotType.ORBIT));
+        map.put(ReplayEventType.MINING, List.of(ShotType.CLOSE_DETAIL, ShotType.ROOM_CORNER, ShotType.ORBIT, ShotType.STATIC_TRACKING, ShotType.FOLLOW));
+        map.put(ReplayEventType.EXPLORATION, List.of(ShotType.FOLLOW, ShotType.REVEAL, ShotType.SIDE_TRACKING, ShotType.DOLLY_IN, ShotType.ORBIT));
         map.put(ReplayEventType.PAUSE, List.of(ShotType.ROOM_CORNER, ShotType.CLOSE_DETAIL, ShotType.DOLLY_IN, ShotType.STATIC_TRACKING, ShotType.ORBIT));
         map.put(ReplayEventType.REPLAY_MARKER, List.of(ShotType.REVEAL, ShotType.DOLLY_IN, ShotType.ORBIT, ShotType.ROOM_CORNER, ShotType.FLYBY));
         return Map.copyOf(map);

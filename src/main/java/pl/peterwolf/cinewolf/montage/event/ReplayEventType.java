@@ -19,6 +19,10 @@ public enum ReplayEventType {
     LANDING,
     BLOCK_PLACEMENT,
     BLOCK_DESTRUCTION,
+    TREE_CUTTING,
+    FARMING,
+    MINING,
+    EXPLORATION,
     PAUSE,
     REPLAY_MARKER
 }

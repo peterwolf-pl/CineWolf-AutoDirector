@@ -46,6 +46,10 @@ public record EventScoringProfile(
         importance.put(ReplayEventType.REPLAY_MARKER, 0.85);
         importance.put(ReplayEventType.BLOCK_PLACEMENT, 0.6);
         importance.put(ReplayEventType.BLOCK_DESTRUCTION, 0.6);
+        importance.put(ReplayEventType.TREE_CUTTING, 0.68);
+        importance.put(ReplayEventType.FARMING, 0.62);
+        importance.put(ReplayEventType.MINING, 0.7);
+        importance.put(ReplayEventType.EXPLORATION, 0.58);
         importance.put(ReplayEventType.PAUSE, 0.25);
         return new EventScoringProfile(0.35, 0.25, 0.15, 0.25,
                 0.15, 0.1, 0.08, 0.2, importance);

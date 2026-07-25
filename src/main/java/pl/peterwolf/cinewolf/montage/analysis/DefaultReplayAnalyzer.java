@@ -12,6 +12,7 @@ import pl.peterwolf.cinewolf.montage.event.ReplaySampleWindow;
 import pl.peterwolf.cinewolf.montage.event.ScoredReplayEvent;
 import pl.peterwolf.cinewolf.montage.event.detector.BlockActivityEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.CombatEventDetector;
+import pl.peterwolf.cinewolf.montage.event.detector.ExplorationEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.MovementEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.PauseEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.ReplayMarkerEventDetector;
@@ -56,10 +57,10 @@ public final class DefaultReplayAnalyzer implements ReplayAnalyzer {
 
     public static DefaultReplayAnalyzer createDefault() {
         return new DefaultReplayAnalyzer(List.of(new MovementEventDetector(), new CombatEventDetector(),
-                new VehicleFlightEventDetector(), new BlockActivityEventDetector(), new PauseEventDetector(),
-                new ReplayMarkerEventDetector()), new DefaultReplayEventScorer(), new EventMerger(),
-                new DefaultSceneSegmenter(), new MovementMetricsCalculator(), new CoarseDetailedSampleSelector(),
-                new TargetRanker());
+                new VehicleFlightEventDetector(), new BlockActivityEventDetector(), new ExplorationEventDetector(),
+                new PauseEventDetector(), new ReplayMarkerEventDetector()), new DefaultReplayEventScorer(),
+                new EventMerger(), new DefaultSceneSegmenter(), new MovementMetricsCalculator(),
+                new CoarseDetailedSampleSelector(), new TargetRanker());
     }
 
     @Override

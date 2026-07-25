@@ -552,7 +552,8 @@ public final class MontageAnalysisController implements AutoCloseable {
         if (!settings.includeCombat) enabled.removeAll(EnumSet.of(ReplayEventType.COMBAT,
                 ReplayEventType.DAMAGE, ReplayEventType.DEATH));
         if (!settings.includeBuildingEvents) enabled.removeAll(EnumSet.of(ReplayEventType.BLOCK_PLACEMENT,
-                ReplayEventType.BLOCK_DESTRUCTION));
+                ReplayEventType.BLOCK_DESTRUCTION, ReplayEventType.TREE_CUTTING, ReplayEventType.FARMING,
+                ReplayEventType.MINING));
         if (!settings.includeVehicles) enabled.removeAll(EnumSet.of(ReplayEventType.VEHICLE_ENTER,
                 ReplayEventType.VEHICLE_EXIT, ReplayEventType.VEHICLE_MOVEMENT));
         if (!settings.includeFlight) enabled.removeAll(EnumSet.of(ReplayEventType.FLIGHT_START,

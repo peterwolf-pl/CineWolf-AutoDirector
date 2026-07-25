@@ -12,6 +12,7 @@ import pl.peterwolf.cinewolf.montage.analysis.ReplayMarkerSnapshot;
 import pl.peterwolf.cinewolf.montage.analysis.ReplaySample;
 import pl.peterwolf.cinewolf.montage.event.detector.BlockActivityEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.CombatEventDetector;
+import pl.peterwolf.cinewolf.montage.event.detector.ExplorationEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.PauseEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.ReplayMarkerEventDetector;
 import pl.peterwolf.cinewolf.montage.event.detector.VehicleFlightEventDetector;
@@ -109,6 +110,73 @@ class StateEventDetectorsTest {
     }
 
     @Test
+    void specializesTreeCuttingMiningAndFarmingFromBlockTypes() {
+        List<ObservedReplayAction> actions = List.of(
+                new ObservedReplayAction.BlockDestroyed(0, Optional.of(PLAYER), new Vec3d(0, 64, 0), "minecraft:oak_log"),
+                new ObservedReplayAction.BlockDestroyed(5, Optional.of(PLAYER), new Vec3d(0, 65, 0), "minecraft:oak_log"),
+                new ObservedReplayAction.BlockDestroyed(10, Optional.of(PLAYER), new Vec3d(0, 66, 0), "minecraft:birch_log"),
+                new ObservedReplayAction.BlockDestroyed(40, Optional.of(PLAYER), new Vec3d(20, 12, 0), "minecraft:iron_ore"),
+                new ObservedReplayAction.BlockDestroyed(45, Optional.of(PLAYER), new Vec3d(21, 12, 0), "minecraft:deepslate_iron_ore"),
+                new ObservedReplayAction.BlockDestroyed(50, Optional.of(PLAYER), new Vec3d(22, 12, 0), "minecraft:stone"),
+                new ObservedReplayAction.BlockPlaced(80, Optional.of(PLAYER), new Vec3d(40, 64, 0), "minecraft:wheat"),
+                new ObservedReplayAction.BlockPlaced(85, Optional.of(PLAYER), new Vec3d(41, 64, 0), "minecraft:carrots"),
+                new ObservedReplayAction.BlockDestroyed(120, Optional.of(PLAYER), new Vec3d(50, 64, 0), "minecraft:wheat"),
+                new ObservedReplayAction.BlockDestroyed(125, Optional.of(PLAYER), new Vec3d(51, 64, 0), "minecraft:potatoes"));
+        ReplaySample replaySample = AnalysisTestFixtures.sample(0, Map.of(PLAYER, snapshot(PLAYER, 0, 64, 0)),
+                List.of(), actions);
+
+        List<ReplayEvent> events = new BlockActivityEventDetector().detect(
+                new ReplaySampleWindow(List.of(replaySample), Map.of(), Set.of(PLAYER)),
+                ReplayAnalysisContext.defaults(List.of(replaySample)), 0.5);
+
+        assertEquals(1, events.stream().filter(event -> event.type() == ReplayEventType.TREE_CUTTING).count());
+        assertEquals(1, events.stream().filter(event -> event.type() == ReplayEventType.MINING).count());
+        assertEquals(2, events.stream().filter(event -> event.type() == ReplayEventType.FARMING).count());
+        ReplayEvent planting = events.stream()
+                .filter(event -> event.type() == ReplayEventType.FARMING && event.startReplayTime() == 80)
+                .findFirst().orElseThrow();
+        assertTrue(planting.evidence().attributes().stream()
+                .anyMatch(attribute -> "activity_mode".equals(attribute.name())
+                        && "planting".equals(attribute.value())));
+        ReplayEvent harvest = events.stream()
+                .filter(event -> event.type() == ReplayEventType.FARMING && event.startReplayTime() == 120)
+                .findFirst().orElseThrow();
+        assertTrue(harvest.evidence().attributes().stream()
+                .anyMatch(attribute -> "activity_mode".equals(attribute.name())
+                        && "harvesting".equals(attribute.value())));
+    }
+
+    @Test
+    void detectsExplorationFromSustainedModerateMovement() {
+        java.util.ArrayList<MovementMetrics> metrics = new java.util.ArrayList<>();
+        java.util.ArrayList<ReplaySample> samples = new java.util.ArrayList<>();
+        for (int index = 0; index <= 20; index++) {
+            long tick = index * 10L;
+            double x = index * 1.2;
+            double z = Math.sin(index * 0.4) * 3.0;
+            Vec3d position = new Vec3d(x, 64, z);
+            Vec3d velocity = new Vec3d(2.4, 0, 0);
+            double headingChange = index % 3 == 0 ? 18.0 : 4.0;
+            metrics.add(new MovementMetrics(PLAYER, tick, position, velocity, velocity, velocity,
+                    2.4, 2.4, 0.0, 0.0, index * 10.0, headingChange, headingChange * 2.0, 64.0, 0.0, 0,
+                    DifferenceMethod.CENTRAL));
+            samples.add(sample(tick, snapshot(PLAYER, x, 64, z)));
+        }
+        ReplaySampleWindow window = new ReplaySampleWindow(samples, Map.of(PLAYER, metrics), Set.of(PLAYER));
+
+        List<ReplayEvent> events = new ExplorationEventDetector().detect(window,
+                ReplayAnalysisContext.defaults(samples), 0.5);
+
+        assertEquals(1, events.stream().filter(event -> event.type() == ReplayEventType.EXPLORATION).count());
+        ReplayEvent exploration = events.stream()
+                .filter(event -> event.type() == ReplayEventType.EXPLORATION).findFirst().orElseThrow();
+        assertTrue(exploration.durationTicks() >= 80);
+        assertTrue(exploration.evidence().attributes().stream()
+                .anyMatch(attribute -> "activity_mode".equals(attribute.name())
+                        && "exploration".equals(attribute.value())));
+    }
+
+    @Test
     void detectsVehicleTransitionsMovementFlightAndLanding() {
         List<ReplaySample> samples = List.of(
                 sample(0, state(PLAYER, 0, 0, 0, 20, 20, 0, false, false, true,
@@ -169,17 +237,18 @@ class StateEventDetectorsTest {
     }
 
     @Test
-    void defaultDetectorSetCoversExactlyAllTwentyEventTypes() {
+    void defaultDetectorSetCoversExactlyAllEventTypes() {
         Set<ReplayEventType> supported = EnumSet.noneOf(ReplayEventType.class);
         supported.addAll(new pl.peterwolf.cinewolf.montage.event.detector.MovementEventDetector().supportedTypes());
         supported.addAll(new CombatEventDetector().supportedTypes());
         supported.addAll(new VehicleFlightEventDetector().supportedTypes());
         supported.addAll(new BlockActivityEventDetector().supportedTypes());
+        supported.addAll(new ExplorationEventDetector().supportedTypes());
         supported.addAll(new PauseEventDetector().supportedTypes());
         supported.addAll(new ReplayMarkerEventDetector().supportedTypes());
 
         assertEquals(EnumSet.allOf(ReplayEventType.class), supported);
-        assertEquals(20, supported.size());
+        assertEquals(24, supported.size());
     }
 
     private static MovementMetrics metric(long tick, double x, double y, double speed) {

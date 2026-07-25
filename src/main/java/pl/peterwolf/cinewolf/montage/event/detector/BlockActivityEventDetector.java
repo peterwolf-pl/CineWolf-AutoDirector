@@ -22,7 +22,8 @@ import java.util.Set;
 
 public final class BlockActivityEventDetector implements ReplayEventDetector {
     private static final Set<ReplayEventType> TYPES = Set.copyOf(EnumSet.of(
-            ReplayEventType.BLOCK_PLACEMENT, ReplayEventType.BLOCK_DESTRUCTION));
+            ReplayEventType.BLOCK_PLACEMENT, ReplayEventType.BLOCK_DESTRUCTION,
+            ReplayEventType.TREE_CUTTING, ReplayEventType.FARMING, ReplayEventType.MINING));
 
     @Override
     public Set<ReplayEventType> supportedTypes() {
@@ -82,14 +83,31 @@ public final class BlockActivityEventDetector implements ReplayEventDetector {
         double radius = 0.0;
         for (BlockObservation observation : group) radius = Math.max(radius, center.distanceTo(observation.location()));
         BlockObservation peak = group.get(group.size() / 2);
+        ReplayEventType genericType = group.getFirst().type();
+        ReplayEventType eventType = BlockActivityClassifier.specialize(genericType, blockTypes).orElse(genericType);
+        String activityMode = activityMode(genericType, eventType);
         EventEvidence evidence = EventEvidence.of(EventEvidence.DetectionSource.AGGREGATED_ACTIONS,
                 EventEvidence.Measurement.observed("block_count", group.size(), "blocks"),
                 EventEvidence.Measurement.atMost("activity_radius", radius, "blocks", thresholds.blockGroupRadius()))
                 .withAttribute("block_types", blockTypes.stream().sorted().reduce((left, right) -> left + "," + right)
-                        .orElse("unknown"));
-        return ReplayEvent.create(group.getFirst().type(), group.getFirst().replayTime(), peak.replayTime(),
+                        .orElse("unknown"))
+                .withAttribute("activity_mode", activityMode)
+                .withAttribute("generic_block_event", genericType.name().toLowerCase());
+        if (eventType != genericType) {
+            evidence = evidence.withRelatedType(genericType);
+        }
+        return ReplayEvent.create(eventType, group.getFirst().replayTime(), peak.replayTime(),
                 group.getLast().replayTime(), group.getFirst().actor().map(Set::of).orElseGet(Set::of), center,
                 Math.min(1.0, group.size() / 8.0), 1.0, evidence);
+    }
+
+    private static String activityMode(ReplayEventType genericType, ReplayEventType specialized) {
+        if (specialized == ReplayEventType.TREE_CUTTING) return "tree_cutting";
+        if (specialized == ReplayEventType.MINING) return "mining";
+        if (specialized == ReplayEventType.FARMING) {
+            return genericType == ReplayEventType.BLOCK_PLACEMENT ? "planting" : "harvesting";
+        }
+        return genericType == ReplayEventType.BLOCK_PLACEMENT ? "placement" : "destruction";
     }
 
     private record BlockObservation(ReplayEventType type, long replayTime, Optional<TargetReference> actor,

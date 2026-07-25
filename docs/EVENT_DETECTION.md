@@ -34,6 +34,10 @@ Measurements store value, unit, comparison, and the threshold used. Stable attri
 | `LANDING` | End of flight + ground/on-ground transition | Require falling/airborne context followed by ground proximity |
 | `BLOCK_PLACEMENT` | Direct block-change action | Group nearby changes by time, space, and actor when known |
 | `BLOCK_DESTRUCTION` | Direct block-change action | Group nearby changes; do not emit one montage event per block |
+| `TREE_CUTTING` | Block destruction of logs/wood/stems | Specialize a destruction group when most blocks are tree wood |
+| `FARMING` | Crop/farmland placement or harvest destruction | Specialize when most blocks are crops/farmland (plant or harvest) |
+| `MINING` | Block destruction of stone/ores | Specialize a destruction group when most blocks are mineable stone/ore |
+| `EXPLORATION` | Derived moderate ground movement | Sustained walking path with distance + heading/span evidence; exclude vehicles/flight/high speed |
 | `PAUSE` | Stationary duration + absence of strong action | Require speed below the pause limit for the configured duration |
 | `REPLAY_MARKER` | Flashback replay metadata | One read-only CineWolf event per included native marker |
 
@@ -80,6 +84,18 @@ Flight uses explicit creative/Elytra state when available. Otherwise sustained a
 
 Individual block actions are grouped when their times, positions, and actors are compatible. Aggregates can retain count, bounds, rate, dominant block types, and placement/destruction balance. Replay snapshot reconstruction is excluded from capture so loading a state does not resemble building activity.
 
+When a majority of blocks in a group match a specialized category, the detector emits a specialized event instead of the generic placement/destruction type:
+
+- `TREE_CUTTING` — logs, wood, stems, hyphae, stripped wood, mangrove roots;
+- `FARMING` — farmland/crop placement (planting) or crop harvest destruction, with `activity_mode` of `planting` or `harvesting`;
+- `MINING` — stone family blocks, ores, deepslate ores, netherrack, ancient debris, and similar diggables.
+
+Mixed or ambiguous groups stay as `BLOCK_PLACEMENT` / `BLOCK_DESTRUCTION`. Specialized events keep the generic type as a related-type annotation.
+
+## Exploration
+
+`EXPLORATION` is inferred from moderate on-foot movement: speed between a walk floor and just under the player high-speed threshold, duration of several seconds, meaningful path distance, and either heading change or horizontal path span. Vehicle, Elytra, and creative-flight contexts are excluded so ordinary travel by vehicle or flight is not mislabeled as sightseeing.
+
 ## Merging and deduplication
 
 Same-type events merge only when:
@@ -91,7 +107,7 @@ Same-type events merge only when:
 
 The merged event keeps the strongest magnitude/confidence peak, unions targets/evidence, and uses a confidence-weighted location. Equivalent same-type peaks within one tick are deduplicated by `0.6 × confidence + 0.4 × magnitude`.
 
-Related event pairs are annotated rather than blindly collapsed. Current relationships include acceleration/high speed, vehicle movement/high speed, flight/high speed, flight start/altitude gain, flight/altitude movement, flight/landing, combat/damage, combat/death, and vehicle movement/sharp turn.
+Related event pairs are annotated rather than blindly collapsed. Current relationships include acceleration/high speed, vehicle movement/high speed, flight/high speed, flight start/altitude gain, flight/altitude movement, flight/landing, combat/damage, combat/death, vehicle movement/sharp turn, tree cutting/block destruction, mining/block destruction, farming/block placement or destruction, and exploration/position change.
 
 ## Scoring
 

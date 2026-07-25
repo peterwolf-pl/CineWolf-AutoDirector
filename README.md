@@ -21,7 +21,7 @@ Montage generation runs entirely on the local client. CineWolf uses no AI servic
 - User montage preset import/export and richer non-destructive montage playback (seek, shot navigation, loop modes).
 - Bounded coarse-to-detailed replay sampling with cancellation and restoration of the original replay time and pause state.
 - Movement metrics using central differences where possible, boundary differences at range edges, smoothing, and teleport/dimension discontinuities.
-- Deterministic event models for movement, speed, acceleration, turns, altitude, combat, damage, death, vehicles, flight, landing, block activity, pauses, and replay markers when the underlying replay exposes enough evidence.
+- Deterministic event models for movement, speed, acceleration, turns, altitude, combat, damage, death, vehicles, flight, landing, block activity (including tree cutting, farming, mining), exploration, pauses, and replay markers when the underlying replay exposes enough evidence.
 - Typed evidence, confidence, detector thresholds, event merging, deduplication, preset compatibility, marker/target bonuses, repetition penalties, and visible scoring reasons.
 - Seven data-driven montage presets, editable proposed shots, collision-aware path preparation, multi-shot path preview, and vertical composition guides.
 - Shared zero-phase camera-path smoothing with adjustable position/rotation strength, a time window, and deterministic isolated-jump rejection that does not cap sustained Flyby motion.

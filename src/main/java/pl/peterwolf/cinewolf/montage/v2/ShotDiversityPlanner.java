@@ -76,6 +76,9 @@ public final class ShotDiversityPlanner {
             case LANDING -> type == ShotType.STATIC_TRACKING || type == ShotType.DOLLY_OUT ? 1.1 : 0.0;
             case VEHICLE_MOVEMENT, VEHICLE_ENTER -> type == ShotType.VEHICLE_PROFILE || type == ShotType.SIDE_TRACKING ? 1.2 : 0.0;
             case COMBAT, DAMAGE, DEATH -> type == ShotType.CLOSE_DETAIL || type == ShotType.CHASE ? 1.0 : 0.0;
+            case TREE_CUTTING, MINING -> type == ShotType.CLOSE_DETAIL || type == ShotType.ORBIT || type == ShotType.ROOM_CORNER ? 1.1 : 0.0;
+            case FARMING -> type == ShotType.CLOSE_DETAIL || type == ShotType.STATIC_TRACKING || type == ShotType.ROOM_CORNER ? 1.1 : 0.0;
+            case EXPLORATION -> type == ShotType.FOLLOW || type == ShotType.REVEAL || type == ShotType.SIDE_TRACKING ? 1.15 : 0.0;
             default -> 0.0;
         };
     }

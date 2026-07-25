@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.19 - 2026-07-25
+
+- Activity detection for survival gameplay:
+  - **Tree cutting** — grouped log/wood/stem destruction
+  - **Farming** — planting and harvesting crops/farmland
+  - **Mining** — stone/ore destruction groups
+  - **Exploration** — sustained moderate on-foot sightseeing movement
+- Specialized events replace generic block placement/destruction when block-type evidence is clear; controlled by the existing “Include Building Events” toggle (except exploration, which is always available with movement analysis)
+
 ## 2.0.5 - 2026-07-25
 
 - New shot / setting **3rd Person**: camera rides **another player's head/eyes** and tracks the main subject
