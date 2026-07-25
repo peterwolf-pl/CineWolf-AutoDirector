@@ -30,9 +30,11 @@ CineWolf AutoDirector 2.0 targets **Flashback 0.41.1** exactly for full editor i
 
 ## Capability surface (0.41.1)
 
-Enabled: camera position/rotation, FOV, replay-time (Timelapse), timeline selection, markers, overlay, native undo history, non-destructive preview, speed ramps via Timelapse, editor selection restore.
+Enabled: camera position/rotation (including camera roll), FOV, replay-time (Timelapse), entity-tracking keyframes (`TrackEntityKeyframe`), timeline selection, markers, overlay, native undo history, non-destructive preview, speed ramps via Timelapse, editor selection restore.
 
-Disabled / not exposed: entity-tracking keyframes, independent roll track, public custom metadata tracks.
+Disabled / not exposed: public custom metadata tracks.
+
+After a successful montage write, CineWolf sets Flashback export I/O (`setExportTicks`) to the full native source interval occupied by the written Camera/FOV/Timelapse tracks so Start Export covers the whole montage.
 
 ## Updating support
 

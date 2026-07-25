@@ -21,8 +21,8 @@ class FlashbackCompatibilityRegistryTest {
         assertEquals(CompatibilityLevel.SUPPORTED, assessment.level());
         assertTrue(assessment.editorIntegrationEnabled());
         assertTrue(assessment.capabilities().supportsMontageWriting());
-        assertFalse(assessment.capabilities().entityTracking());
-        assertFalse(assessment.capabilities().rollKeyframes());
+        assertTrue(assessment.capabilities().entityTracking());
+        assertTrue(assessment.capabilities().rollKeyframes());
     }
 
     @Test

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- After writing a montage to Flashback, set export I/O to the full montage source range so Start Export covers every written keyframe
+- Flashback 0.41.1 capabilities: camera **roll** and **entity tracking** are available (API present); stop showing permanent “Unavailable …” banners for them
+
 ## 2.0.19 - 2026-07-25
 
 - Activity detection for survival gameplay:

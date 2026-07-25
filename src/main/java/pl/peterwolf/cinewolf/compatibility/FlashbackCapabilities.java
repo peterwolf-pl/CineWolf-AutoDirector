@@ -36,14 +36,14 @@ public record FlashbackCapabilities(
                 true,  // camera rotation
                 true,  // FOV
                 true,  // Timelapse / replay-time mapping
-                false, // no stable entity-tracking keyframes API
+                true,  // TrackEntityKeyframe + TrackEntityKeyframeType
                 true,  // export/selection range
                 true,  // native markers (read + limited write)
                 true,  // CineWolf overlay only
                 true,  // EditorScene history entry
                 true,  // in-memory preview
                 true,  // via Timelapse TPS
-                false, // no independent roll track
+                true,  // CameraKeyframe.roll (and TrackEntityKeyframe.roll)
                 true,  // restore tick/pause/selection
                 false  // no public custom metadata track
         );

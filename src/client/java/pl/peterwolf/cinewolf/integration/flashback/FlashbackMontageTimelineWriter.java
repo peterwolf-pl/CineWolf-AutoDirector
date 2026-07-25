@@ -131,6 +131,7 @@ public final class FlashbackMontageTimelineWriter {
                 GeneratedTracks generated = generatedTracks(scene);
                 applyGeneratedMetadata(generated, plan.montageId());
                 verifyGeneratedPayload(generated, payload);
+                applyExportRange(state, plan.sourceInterval(), replayServer.getTotalReplayTicks());
                 state.markDirty();
                 int modCountAfterWrite = state.modCount;
                 lastOperation = new OperationGuard(state, state.getSceneIndex(), plan.montageId(),
@@ -206,6 +207,30 @@ public final class FlashbackMontageTimelineWriter {
                                              List<String> errors) {
         if (plan.sourceInterval().endTick() > totalReplayTicks) {
             errors.add("montage.timeline.source_exceeds_replay");
+        }
+    }
+
+    /**
+     * Point Flashback export I/O at the full native source interval occupied by the montage so
+     * Start Export covers every written Camera/FOV/Timelapse key instead of a partial selection.
+     */
+    private static void applyExportRange(EditorState state, MontageTimelineInterval interval, int totalReplayTicks) {
+        if (state == null || interval == null) return;
+        int total = Math.max(0, totalReplayTicks);
+        int start = Math.max(0, Math.min(interval.startTick(), total));
+        int end = Math.max(start, Math.min(interval.endTick(), total));
+        if (end <= start && total > start) end = Math.min(total, start + 1);
+        state.setExportTicks(start, end, total);
+        // Keep the timeline zoom framed on the written montage when Flashback exposes zoom fields.
+        if (total > 0) {
+            double span = Math.max(1.0, end - start);
+            double padding = Math.max(1.0, span * 0.05);
+            double min = Math.max(0.0, (start - padding) / (double) total);
+            double max = Math.min(1.0, (end + padding) / (double) total);
+            if (max > min) {
+                state.zoomMin = min;
+                state.zoomMax = max;
+            }
         }
     }
 

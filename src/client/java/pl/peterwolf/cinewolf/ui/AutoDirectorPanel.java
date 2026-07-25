@@ -104,11 +104,9 @@ public final class AutoDirectorPanel {
                 ImGui.setTooltip(String.join("\n", status.warnings()));
             }
             var caps = status.capabilities();
-            if (!caps.entityTracking()) {
-                ImGui.textDisabled(tr("cinewolf.compatibility.feature_disabled_tooltip") + " (entity tracking)");
-            }
-            if (!caps.rollKeyframes()) {
-                ImGui.textDisabled(tr("cinewolf.compatibility.feature_disabled_tooltip") + " (roll)");
+            // Only surface gaps that block core work — not optional tracks CineWolf does not require.
+            if (!caps.supportsCameraWriting() || !caps.supportsMontageWriting()) {
+                ImGui.textDisabled(tr("cinewolf.compatibility.feature_disabled_tooltip"));
             }
         }
         ImGui.textDisabled(tr("cinewolf.timeline.overlay_fallback"));
