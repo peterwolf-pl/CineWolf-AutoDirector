@@ -3,6 +3,7 @@ package pl.peterwolf.cinewolf.montage.plan;
 import pl.peterwolf.cinewolf.model.ShotRequest;
 import pl.peterwolf.cinewolf.model.ShotType;
 import pl.peterwolf.cinewolf.model.TargetReference;
+import pl.peterwolf.cinewolf.montage.analysis.IndoorSceneHeuristics;
 import pl.peterwolf.cinewolf.montage.analysis.RankedReplayTarget;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayAnalysisResult;
 import pl.peterwolf.cinewolf.montage.event.ReplayEvent;
@@ -193,14 +194,29 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         boolean vertical = request.aspectRatio()
                 == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16;
         FramingType framing = framing(event.type(), index, shotCount, vertical);
+        boolean indoor = IndoorSceneHeuristics.isLikelyIndoor(analysis, target, interval.start, interval.end);
         ShotTypeSelection typeSelection = chooseShotType(event.type(), index, shotCount, previousType,
-                request, context);
+                request, context, indoor);
         ShotType type = typeSelection.selected();
         // Prefer center-safe generators on 9:16 when a wide lateral flyby was selected.
         if (vertical && type == ShotType.FLYBY) {
             if (context.availableShotTypes().contains(ShotType.SIDE_TRACKING)) {
                 type = ShotType.SIDE_TRACKING;
             } else if (context.availableShotTypes().contains(ShotType.FOLLOW)) {
+                type = ShotType.FOLLOW;
+            }
+        }
+        // Indoor: never use crane/orbit/spiral if a corner/static option is available.
+        if (indoor && (type == ShotType.ORBIT || type == ShotType.SPIRAL
+                || type == ShotType.CRANE_UP || type == ShotType.CRANE_DOWN || type == ShotType.FLYBY)) {
+            if (context.availableShotTypes().contains(ShotType.ROOM_CORNER)
+                    && request.shotPreferences().allows(ShotType.ROOM_CORNER)) {
+                type = ShotType.ROOM_CORNER;
+            } else if (context.availableShotTypes().contains(ShotType.STATIC_TRACKING)
+                    && request.shotPreferences().allows(ShotType.STATIC_TRACKING)) {
+                type = ShotType.STATIC_TRACKING;
+            } else if (context.availableShotTypes().contains(ShotType.FOLLOW)
+                    && request.shotPreferences().allows(ShotType.FOLLOW)) {
                 type = ShotType.FOLLOW;
             }
         }
@@ -212,6 +228,12 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 ? "montage.reason.outro" : "montage.reason.event_match");
         reasons.add("montage.reason.event." + event.type().name().toLowerCase(java.util.Locale.ROOT));
         reasons.addAll(scored.scoringReasons());
+        if (indoor) {
+            reasons.add("montage.reason.indoor_scene");
+            if (type == ShotType.ROOM_CORNER || type == ShotType.STATIC_TRACKING) {
+                reasons.add("montage.reason.indoor_corner_tracking");
+            }
+        }
         if (vertical) {
             reasons.add("montage.reason.vertical_9_16_composition");
         }
@@ -838,18 +860,41 @@ public final class DefaultMontagePlanner implements MontagePlanner {
     }
 
     private static ShotTypeSelection chooseShotType(ReplayEventType event, int index, int count, ShotType previous,
-                                                    MontageRequest request, MontagePlanningContext context) {
+                                                    MontageRequest request, MontagePlanningContext context,
+                                                    boolean indoor) {
         List<ShotType> requested = index == 0 ? request.preset().introTemplate().preferredShotTypes()
                 : index == count - 1 ? request.preset().outroTemplate().preferredShotTypes()
                 : EVENT_SHOTS.getOrDefault(event, List.of(ShotType.FOLLOW, ShotType.ORBIT));
+        if (indoor) {
+            // Prefer fixed indoor cameras over orbit/crane that pierce walls/ceilings.
+            List<ShotType> indoorFirst = new ArrayList<>(List.of(
+                    ShotType.ROOM_CORNER, ShotType.STATIC_TRACKING, ShotType.FOLLOW,
+                    ShotType.CLOSE_DETAIL, ShotType.DOLLY_IN, ShotType.SIDE_TRACKING));
+            for (ShotType type : requested) {
+                if (!indoorFirst.contains(type)
+                        && type != ShotType.ORBIT && type != ShotType.SPIRAL
+                        && type != ShotType.CRANE_UP && type != ShotType.CRANE_DOWN
+                        && type != ShotType.FLYBY) {
+                    indoorFirst.add(type);
+                }
+            }
+            requested = indoorFirst;
+        }
         ShotType firstRequested = requested.getFirst();
         Set<ShotType> allowed = new java.util.HashSet<>(context.availableShotTypes());
         allowed.retainAll(request.shotPreferences().allowedShotTypes());
         if (allowed.isEmpty()) allowed = new java.util.HashSet<>(context.availableShotTypes());
         List<ShotType> candidates = new ArrayList<>();
         requested.stream().filter(allowed::contains).forEach(candidates::add);
+        if (indoor) {
+            // Demote wide outdoor-style shots to the end of the list.
+            candidates.removeIf(type -> type == ShotType.ORBIT || type == ShotType.SPIRAL
+                    || type == ShotType.CRANE_UP || type == ShotType.CRANE_DOWN || type == ShotType.FLYBY);
+        }
         request.preset().preferredShotTypes().stream().sorted(Comparator.comparing(Enum::ordinal))
                 .filter(allowed::contains).filter(type -> !candidates.contains(type))
+                .filter(type -> !indoor || (type != ShotType.ORBIT && type != ShotType.CRANE_UP
+                        && type != ShotType.CRANE_DOWN && type != ShotType.SPIRAL && type != ShotType.FLYBY))
                 .forEach(candidates::add);
         allowed.stream().sorted(Comparator.comparing(Enum::ordinal))
                 .filter(type -> !candidates.contains(type)).forEach(candidates::add);

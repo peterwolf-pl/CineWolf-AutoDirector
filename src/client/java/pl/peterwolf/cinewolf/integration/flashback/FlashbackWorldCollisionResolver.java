@@ -59,6 +59,7 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
         int changed = 0;
         int unresolved = 0;
         int ceilingClamped = 0;
+        java.util.LinkedHashMap<String, Integer> unresolvedReasons = new java.util.LinkedHashMap<>();
         String lastUnresolvedReason = "";
         Vec3d previousAdjusted = null;
         for (CameraSample sample : originalPath.samples()) {
@@ -101,6 +102,10 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                 if (!resolvedSafely) {
                     lastUnresolvedReason = position == null ? "invalid_collision_input"
                             : temporalState.positionState.lastFailureReason();
+                    if (lastUnresolvedReason == null || lastUnresolvedReason.isBlank()) {
+                        lastUnresolvedReason = "unknown";
+                    }
+                    unresolvedReasons.merge(lastUnresolvedReason, 1, Integer::sum);
                     unresolved++;
                 }
                 if (position == null) {
@@ -173,8 +178,9 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
         }
         if (unresolved > 0 && !ceilingOnly) {
             warnings.add(new PathWarning(PathWarning.Severity.WARNING, "collision_unresolved",
-                    "Collision avoidance used a continuity fallback for " + unresolved
-                            + " camera samples (last reason: " + lastUnresolvedReason + ")", 0.0));
+                    unresolved + ":" + formatReasonCounts(unresolvedReasons)
+                            + (lastUnresolvedReason.isBlank() ? "" : " (last=" + lastUnresolvedReason + ")"),
+                    0.0));
         }
         CameraPathPlan path = new CameraPathPlan(originalPath.request(), continuous, continuous, warnings,
                 originalPath.statistics());
@@ -277,6 +283,18 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
         if (hit.getType() != HitResult.Type.BLOCK) return OptionalDouble.empty();
         // Underside of the hit: use the hit location Y (clip lands on the face).
         return OptionalDouble.of(hit.getLocation().y);
+    }
+
+    private static String formatReasonCounts(java.util.Map<String, Integer> reasons) {
+        if (reasons == null || reasons.isEmpty()) return "unknown";
+        StringBuilder text = new StringBuilder();
+        reasons.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .forEach(entry -> {
+                    if (!text.isEmpty()) text.append(", ");
+                    text.append(entry.getKey()).append('=').append(entry.getValue());
+                });
+        return text.toString();
     }
 
     private static CollisionResolutionResult unresolved(CameraPathPlan originalPath, String code, String message) {

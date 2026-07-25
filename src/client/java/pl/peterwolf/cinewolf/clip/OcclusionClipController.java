@@ -34,6 +34,10 @@ public final class OcclusionClipController {
     private volatile boolean active;
     private volatile UUID subjectUuid;
     private volatile TargetReference preferredSubject;
+    /**
+     * When true, force CLIP behaviour even if config obstacle mode is AVOID (indoor montage fallback).
+     */
+    private volatile boolean indoorClipOverride;
     private CineWolfConfig config;
 
     private OcclusionClipController() {
@@ -52,8 +56,24 @@ public final class OcclusionClipController {
         this.subjectUuid = subject == null ? null : subject.uuid();
     }
 
+    public void setIndoorClipOverride(boolean enabled) {
+        this.indoorClipOverride = enabled;
+        if (!enabled) {
+            clearAndRestore(Minecraft.getInstance().level);
+        }
+    }
+
+    public boolean indoorClipOverride() {
+        return indoorClipOverride;
+    }
+
+    private boolean clipModeEnabled() {
+        return config != null
+                && (config.montage.obstacleHandling().clipsOccluders() || indoorClipOverride);
+    }
+
     public boolean isActive() {
-        return active && config != null && config.montage.obstacleHandling().clipsOccluders();
+        return active && clipModeEnabled();
     }
 
     public boolean shouldClipBlock(BlockPos pos) {
@@ -77,8 +97,7 @@ public final class OcclusionClipController {
     public void tick() {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
-        if (config == null || level == null || minecraft.player == null
-                || !config.montage.obstacleHandling().clipsOccluders()) {
+        if (config == null || level == null || minecraft.player == null || !clipModeEnabled()) {
             clearAndRestore(level);
             return;
         }

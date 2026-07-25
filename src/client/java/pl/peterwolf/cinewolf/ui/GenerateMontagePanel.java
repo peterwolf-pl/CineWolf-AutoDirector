@@ -1517,9 +1517,40 @@ public final class GenerateMontagePanel {
 
     private static String localizePathWarning(PathWarning warning) {
         String key = "cinewolf.path_warning." + warning.code();
-        String argument = warning.message().replaceAll("\\D+", " ").trim().split(" ")[0];
+        String message = warning.message() == null ? "" : warning.message().trim();
+        if ("collision_unresolved".equals(warning.code()) && message.contains(":")) {
+            // "23:probe_budget_exhausted=12,no_safe_candidate=8"
+            String count = message.substring(0, message.indexOf(':'));
+            String reasons = message.substring(message.indexOf(':') + 1).trim();
+            String translated = tr(key + "_detail", count, localizeCollisionReasons(reasons));
+            if (!translated.equals(key + "_detail")) return translated;
+        }
+        if ("indoor_clip_preferred".equals(warning.code())) {
+            String translated = tr(key);
+            return translated.equals(key) ? message : translated;
+        }
+        String argument = message.replaceAll("\\D+", " ").trim().split(" ")[0];
         String translated = argument.isBlank() ? tr(key) : tr(key, argument);
         return translated.equals(key) ? tr("cinewolf.montage.warning.path_review") : translated;
+    }
+
+    private static String localizeCollisionReasons(String reasons) {
+        if (reasons == null || reasons.isBlank()) return "";
+        StringBuilder out = new StringBuilder();
+        for (String part : reasons.split(",")) {
+            String token = part.trim();
+            if (token.isEmpty()) continue;
+            int eq = token.indexOf('=');
+            String code = eq > 0 ? token.substring(0, eq).trim() : token;
+            String count = eq > 0 ? token.substring(eq + 1).trim() : "";
+            String labelKey = "cinewolf.collision.reason." + code;
+            String label = tr(labelKey);
+            if (label.equals(labelKey)) label = code;
+            if (!out.isEmpty()) out.append(", ");
+            out.append(label);
+            if (!count.isBlank()) out.append(" ×").append(count);
+        }
+        return out.toString();
     }
 
     private static String timestamp(long tick) {

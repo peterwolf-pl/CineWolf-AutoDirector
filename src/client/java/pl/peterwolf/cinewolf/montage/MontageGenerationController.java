@@ -9,11 +9,14 @@ import pl.peterwolf.cinewolf.camera.SampledTargetPoseResolver;
 import pl.peterwolf.cinewolf.camera.VerticalFramingCorrector;
 import pl.peterwolf.cinewolf.camera.VerticalFramingValidator;
 import pl.peterwolf.cinewolf.config.CineWolfConfig;
+import pl.peterwolf.cinewolf.clip.OcclusionClipController;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackExportAspectSync;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackMontageTimelineWriter;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackWorldCollisionResolver;
+import pl.peterwolf.cinewolf.montage.analysis.IndoorSceneHeuristics;
 import pl.peterwolf.cinewolf.montage.preset.VerticalComposition;
+import pl.peterwolf.cinewolf.model.ShotType;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.CameraSample;
 import pl.peterwolf.cinewolf.model.PathStatistics;
@@ -145,8 +148,17 @@ public final class MontageGenerationController implements AutoCloseable {
     private void acceptGeneratedPaths(GenerationJob current, List<GeneratedPath> paths) {
         if (current.id != generations.get() || job != current || !adapter.isReplayEditorOpen()) return;
         current.generated = paths;
-        // Always run a world pass: full AVOID collision, otherwise ceiling-only so indoor shots stay under roofs.
-        current.ceilingOnly = !config.montage.obstacleHandling().adjustsCameraPath();
+        boolean avoid = config.montage.obstacleHandling().adjustsCameraPath();
+        boolean indoor = paths.stream().anyMatch(path -> path.shot.shotType() == ShotType.ROOM_CORNER
+                || IndoorSceneHeuristics.isLikelyIndoor(current.analysis, path.shot.target(),
+                path.shot.sourceReplayStartTime(), path.shot.sourceReplayEndTime()));
+        // Indoor + AVOID → skip thrashing probes (ceiling only) and enable CLIP-style occlusion instead.
+        current.indoorClipOverride = indoor && avoid;
+        current.ceilingOnly = !avoid || current.indoorClipOverride;
+        if (current.indoorClipOverride) {
+            OcclusionClipController.get().setIndoorClipOverride(true);
+            logger.info("CineWolf indoor scene: relaxing AVOID to ceiling+CLIP for {} shot(s)", paths.size());
+        }
         current.restoreTick = adapter.getCurrentReplayTime();
         current.restorePaused = adapter.replayPaused();
         current.collisionItems = collisionItems(paths);
@@ -234,14 +246,20 @@ public final class MontageGenerationController implements AutoCloseable {
             boolean unresolved = resolution.path().warnings().stream()
                     .anyMatch(warning -> warning.code().equals("collision_unresolved"));
             if (unresolved) {
+                String reasonDetail = resolution.path().warnings().stream()
+                        .filter(warning -> warning.code().equals("collision_unresolved"))
+                        .map(PathWarning::message)
+                        .findFirst().orElse(resolution.message());
                 if (current.collisionUnresolved[sameTick.pathIndex()] == 0) {
                     logger.warn("CineWolf collision continuity fallback: path={}, sample={}, replayTick={}, "
                                     + "shot={}, position={}, focus={}, reason={}",
                             sameTick.pathIndex(), sameTick.sampleIndex(), sameTick.replayTick(),
                             generated.shot.shotRequest().shotType(), sample.position(), sample.lookAtPoint(),
-                            resolution.message());
+                            reasonDetail);
                 }
                 current.collisionUnresolved[sameTick.pathIndex()]++;
+                current.collisionReasonSummaries.computeIfAbsent(sameTick.pathIndex(), key -> new ArrayList<>())
+                        .add(reasonDetail);
             }
             if (resolution.path().warnings().stream()
                     .anyMatch(warning -> warning.code().equals("collision_world_unavailable"))) {
@@ -295,9 +313,11 @@ public final class MontageGenerationController implements AutoCloseable {
                 fail("cinewolf.montage.error.collision_incomplete");
                 return;
             }
+            String reasonSummary = summarizeReasons(current.collisionReasonSummaries.get(pathIndex));
             CameraPathPlan raw = new CameraPathPlan(original.path.request(), samples, samples,
                     collisionWarnings(original.path.warnings(), current.collisionAdjusted[pathIndex],
-                            current.collisionUnresolved[pathIndex]), original.path.statistics());
+                            current.collisionUnresolved[pathIndex], reasonSummary, current.indoorClipOverride),
+                    original.path.statistics());
             adjusted.add(new GeneratedPath(original.shot, pathFinalizer.finalizePath(raw, config.samplingSettings())));
         }
         if (java.util.Arrays.stream(current.collisionUnresolved).sum() > 0) {
@@ -313,6 +333,11 @@ public final class MontageGenerationController implements AutoCloseable {
         readyPlan = current.plan;
         generatedPaths = paths;
         renderer.setPlans(paths.stream().map(GeneratedPath::path).toList());
+        // Keep indoor CLIP override while the generated paths are active for preview/export review.
+        OcclusionClipController.get().setIndoorClipOverride(current.indoorClipOverride);
+        if (current.indoorClipOverride && !paths.isEmpty()) {
+            OcclusionClipController.get().setPreferredSubject(paths.getFirst().shot.target());
+        }
         job = null;
         state = State.READY;
         progress = 1.0f;
@@ -427,6 +452,7 @@ public final class MontageGenerationController implements AutoCloseable {
         generatedPaths = List.of();
         lastInspection = null;
         renderer.clear();
+        OcclusionClipController.get().setIndoorClipOverride(false);
         progress = 0.0f;
         if (!restoring) {
             state = State.IDLE;
@@ -484,6 +510,7 @@ public final class MontageGenerationController implements AutoCloseable {
     }
 
     private void fail(String key, Object... arguments) {
+        OcclusionClipController.get().setIndoorClipOverride(false);
         job = null;
         state = State.FAILED;
         progress = 0.0f;
@@ -515,13 +542,59 @@ public final class MontageGenerationController implements AutoCloseable {
         return List.copyOf(result);
     }
 
-    private static List<PathWarning> collisionWarnings(List<PathWarning> original, int adjusted, int unresolved) {
+    private static List<PathWarning> collisionWarnings(List<PathWarning> original, int adjusted, int unresolved,
+                                                       String reasonSummary, boolean indoorClip) {
         List<PathWarning> warnings = new ArrayList<>(original);
+        if (indoorClip) {
+            warnings.add(new PathWarning(PathWarning.Severity.INFO, "indoor_clip_preferred",
+                    "Indoor scene: AVOID relaxed to ceiling clearance + CLIP occlusion", 0.0));
+        }
         if (adjusted > 0) warnings.add(new PathWarning(PathWarning.Severity.INFO, "collision_adjusted",
-                "Collision avoidance moved " + adjusted + " camera samples", 0.0));
-        if (unresolved > 0) warnings.add(new PathWarning(PathWarning.Severity.WARNING, "collision_unresolved",
-                "Collision avoidance could not resolve " + unresolved + " camera samples", 0.0));
+                String.valueOf(adjusted), 0.0));
+        if (unresolved > 0) {
+            String detail = unresolved + (reasonSummary == null || reasonSummary.isBlank()
+                    ? "" : ":" + reasonSummary);
+            warnings.add(new PathWarning(PathWarning.Severity.WARNING, "collision_unresolved", detail, 0.0));
+        }
         return List.copyOf(warnings);
+    }
+
+    private static String summarizeReasons(List<String> rawMessages) {
+        if (rawMessages == null || rawMessages.isEmpty()) return "";
+        // Messages look like "6:probe_budget_exhausted=4,no_safe_candidate=2 (last=...)"
+        java.util.LinkedHashMap<String, Integer> counts = new java.util.LinkedHashMap<>();
+        for (String raw : rawMessages) {
+            if (raw == null || raw.isBlank()) continue;
+            String body = raw;
+            int colon = raw.indexOf(':');
+            if (colon >= 0 && colon + 1 < raw.length()) body = raw.substring(colon + 1);
+            int paren = body.indexOf(" (last=");
+            if (paren > 0) body = body.substring(0, paren);
+            for (String part : body.split(",")) {
+                String token = part.trim();
+                if (token.isEmpty()) continue;
+                int eq = token.indexOf('=');
+                String key = eq > 0 ? token.substring(0, eq).trim() : token;
+                int value = 1;
+                if (eq > 0) {
+                    try {
+                        value = Integer.parseInt(token.substring(eq + 1).trim());
+                    } catch (NumberFormatException ignored) {
+                        value = 1;
+                    }
+                }
+                counts.merge(key, value, Integer::sum);
+            }
+        }
+        if (counts.isEmpty()) return "";
+        StringBuilder text = new StringBuilder();
+        counts.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .forEach(entry -> {
+                    if (!text.isEmpty()) text.append(", ");
+                    text.append(entry.getKey()).append('=').append(entry.getValue());
+                });
+        return text.toString();
     }
 
     @Override
@@ -531,6 +604,7 @@ public final class MontageGenerationController implements AutoCloseable {
         generatedPaths = List.of();
         lastInspection = null;
         renderer.clear();
+        OcclusionClipController.get().setIndoorClipOverride(false);
         executor.shutdownNow();
     }
 
@@ -560,6 +634,9 @@ public final class MontageGenerationController implements AutoCloseable {
         private boolean collisionFatal;
         /** When true, world pass only pulls cameras under ceilings (no lateral AVOID probes). */
         private boolean ceilingOnly;
+        /** Indoor + user AVOID → ceiling path + runtime CLIP occlusion. */
+        private boolean indoorClipOverride;
+        private final java.util.Map<Integer, List<String>> collisionReasonSummaries = new java.util.HashMap<>();
 
         private GenerationJob(long id, MontagePlan plan, ReplayAnalysisResult analysis) {
             this.id = id;

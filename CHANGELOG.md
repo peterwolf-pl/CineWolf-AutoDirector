@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.4 - 2026-07-25
+
+- Collision UI now shows **why** samples could not be cleared (probe budget / no safe candidate / continuity, with counts)
+- Indoor scene heuristics:
+  1. smaller distance/height framing indoors
+  2. prefer **Room Corner / Static Tracking** over Orbit/Crane/Flyby
+  3. when Obstacle is **AVOID** but path looks indoor → relax to **ceiling + CLIP** (hide occluders) instead of thrashing AVOID
+
 ## 2.0.3 - 2026-07-25
 
 - New shot **Room Corner** (`ROOM_CORNER`): for closed rooms, camera sits in a corner at the player’s **eye height** and tracks them (CCTV-style)

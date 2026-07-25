@@ -8,6 +8,7 @@ import pl.peterwolf.cinewolf.model.ShotRequest;
 import pl.peterwolf.cinewolf.model.ShotType;
 import pl.peterwolf.cinewolf.model.TargetPose;
 import pl.peterwolf.cinewolf.model.TargetReference;
+import pl.peterwolf.cinewolf.montage.analysis.IndoorSceneHeuristics;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayAnalysisResult;
 import pl.peterwolf.cinewolf.montage.analysis.ReplayEntitySnapshot;
 import pl.peterwolf.cinewolf.montage.event.ReplayEvent;
@@ -30,6 +31,7 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
         FramingType effectiveFraming = vertical
                 ? VerticalComposition.verticalSafeFraming(framing) : framing;
         double size = targetSize(target, event.peakReplayTime(), analysis).orElse(1.8);
+        boolean indoor = IndoorSceneHeuristics.isLikelyIndoor(analysis, target, sourceStart, sourceEnd);
         double framingMultiplier = switch (effectiveFraming) {
             case EXTREME_WIDE -> 6.5;
             case WIDE -> 4.5;
@@ -37,15 +39,29 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
             case CLOSE -> 1.9;
             case EXTREME_CLOSE -> 1.25;
         };
+        // Indoor rooms: keep cameras close so AVOID/CLIP does not fight large outdoor framing.
+        if (indoor) {
+            framingMultiplier = switch (effectiveFraming) {
+                case EXTREME_WIDE, WIDE -> 2.4;
+                case MEDIUM -> 1.9;
+                case CLOSE -> 1.35;
+                case EXTREME_CLOSE -> 1.1;
+            };
+        }
         double verticalMultiplier = VerticalComposition.distanceMultiplier(request.aspectRatio());
-        double distance = prefs.clampDistance(size * framingMultiplier * verticalMultiplier);
+        double distance = prefs.clampDistance(size * framingMultiplier * verticalMultiplier * (indoor ? 0.7 : 1.0));
         // Vertical export benefits from slightly higher camera so faces/players stay in the upper third.
-        double heightBias = vertical ? 1.15 : 1.0;
+        // Indoors: stay near eye height (low vertical offset).
+        double heightBias = indoor ? 0.35 : (vertical ? 1.15 : 1.0);
         double height = prefs.clampHeight(size * (effectiveFraming == FramingType.CLOSE
                 || effectiveFraming == FramingType.EXTREME_CLOSE ? 0.55 : 1.0) * heightBias);
-        double orbitDiameter = prefs.clampOrbitDiameter(distance * (vertical ? 1.55 : 1.8));
-        double startDistance = prefs.clampDistance(distance * 1.5);
-        double endDistance = prefs.clampDistance(Math.min(distance * 0.65, startDistance));
+        if (indoor && (shotType == ShotType.ROOM_CORNER || shotType == ShotType.STATIC_TRACKING)) {
+            height = prefs.clampHeight(Math.min(height, size * 0.15));
+            distance = prefs.clampDistance(Math.min(distance, Math.max(prefs.minimumDistance(), 4.5)));
+        }
+        double orbitDiameter = prefs.clampOrbitDiameter(distance * (vertical ? 1.55 : 1.8) * (indoor ? 0.7 : 1.0));
+        double startDistance = prefs.clampDistance(distance * (indoor ? 1.15 : 1.5));
+        double endDistance = prefs.clampDistance(Math.min(distance * (indoor ? 0.75 : 0.65), startDistance));
         if (endDistance > startDistance) endDistance = startDistance;
         double rpm = clamp(0.15 + movementIntensity * 0.9, 0.05, 3.0);
         // Reduce lateral speed on vertical so the subject stays centered longer.

@@ -157,5 +157,9 @@ public final class MontageShotSettings {
         public double clampOrbitDiameter(double value) {
             return Math.max(minimumOrbitDiameter, Math.min(maximumOrbitDiameter, value));
         }
+
+        public boolean allows(ShotType type) {
+            return type != null && allowedShotTypes.contains(type);
+        }
     }
 }
