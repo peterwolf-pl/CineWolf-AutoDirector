@@ -1,5 +1,7 @@
 # CineWolf AutoDirector
 
+https://cinewolf.peterwolf.pl/
+
 CineWolf AutoDirector is a client-side Fabric extension for Flashback that turns replay activity into editable cinematic camera work. It generates single shots or multi-shot montages with deterministic local replay analysis.
 
 Version **2.0.1** targets Minecraft Java Edition 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, and Flashback 0.41.1.
