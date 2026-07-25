@@ -99,6 +99,12 @@ public record PlannedMontageShot(
                 append(planningReasons, "montage.reason.duplicated"), warnings);
     }
 
+    public PlannedMontageShot withPlanningReasons(List<String> replacement) {
+        return copy(shotId, order, target, shotType, framing, sourceReplayStartTime, sourceReplayEndTime,
+                outputStartSeconds, outputDurationSeconds, replaySpeed, shotRequest, enabled, locked,
+                Objects.requireNonNullElse(replacement, List.of()), warnings);
+    }
+
     private PlannedMontageShot copy(UUID id, int newOrder, TargetReference newTarget, ShotType newType,
                                     FramingType newFraming, long newSourceStart, long newSourceEnd,
                                     double newOutputStart, double newDuration, double newSpeed,

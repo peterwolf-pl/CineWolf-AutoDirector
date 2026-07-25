@@ -153,76 +153,35 @@ public final class MontagePlanEditor {
                 warnings.stream().distinct().toList());
     }
 
+    /**
+     * Keeps each enabled shot's own source window. Highlight jumps and multi-region cuts intentionally leave
+     * source gaps; those are bridged by Timelapse keyframe jumps at write time. Only reverse/overlapping
+     * source order or peaks outside their windows are rejected.
+     */
     private static List<PlannedMontageShot> normalizeEnabledSourceSlots(MontagePlan plan,
                                                                         List<PlannedMontageShot> rawShots) {
         List<Integer> enabledIndexes = new ArrayList<>();
         for (int index = 0; index < rawShots.size(); index++) {
             if (rawShots.get(index).enabled()) enabledIndexes.add(index);
         }
-        if (enabledIndexes.size() <= 1 || alreadyContinuous(rawShots, enabledIndexes)) return List.copyOf(rawShots);
-
-        List<PlannedMontageShot> enabled = enabledIndexes.stream().map(rawShots::get).toList();
-        long[] boundaries = fixedLengthBoundaries(plan, enabled);
-        if (boundaries == null) return null;
-
-        List<PlannedMontageShot> result = new ArrayList<>(rawShots);
-        for (int index = 0; index < enabled.size(); index++) {
-            PlannedMontageShot shot = enabled.get(index);
-            if (shot.sourceReplayStartTime() != boundaries[index]
-                    || shot.sourceReplayEndTime() != boundaries[index + 1]) {
-                if (shot.locked()) return null;
-                result.set(enabledIndexes.get(index), retimeShot(shot, shot.sourceEvent(), shot.sourceEventScore(),
-                        boundaries[index], boundaries[index + 1], shot.outputStartSeconds(),
-                        shot.outputDurationSeconds()));
-            }
-        }
-        return List.copyOf(result);
-    }
-
-    private static boolean alreadyContinuous(List<PlannedMontageShot> shots, List<Integer> enabledIndexes) {
+        if (enabledIndexes.isEmpty()) return null;
         long previousEnd = Long.MIN_VALUE;
         for (int index : enabledIndexes) {
-            PlannedMontageShot shot = shots.get(index);
-            if (previousEnd != Long.MIN_VALUE && shot.sourceReplayStartTime() != previousEnd) return false;
+            PlannedMontageShot shot = rawShots.get(index);
+            if (shot.sourceReplayStartTime() < plan.sourceStartReplayTime()
+                    || shot.sourceReplayEndTime() > plan.sourceEndReplayTime()) {
+                return null;
+            }
             if (shot.sourceEvent().peakReplayTime() < shot.sourceReplayStartTime()
-                    || shot.sourceEvent().peakReplayTime() > shot.sourceReplayEndTime()) return false;
+                    || shot.sourceEvent().peakReplayTime() > shot.sourceReplayEndTime()) {
+                return null;
+            }
+            if (previousEnd != Long.MIN_VALUE && shot.sourceReplayStartTime() < previousEnd) {
+                return null;
+            }
             previousEnd = shot.sourceReplayEndTime();
         }
-        return true;
-    }
-
-    /**
-     * Closes source gaps by shifting intact source slots. Keeping every slot length unchanged also keeps its
-     * replay speed unchanged, so disable/remove/re-enable edits remain valid against the original speed bounds.
-     */
-    private static long[] fixedLengthBoundaries(MontagePlan plan, List<PlannedMontageShot> shots) {
-        int count = shots.size();
-        if (count == 0) return null;
-        long[] boundaries = new long[count + 1];
-        long[] offsets = new long[count + 1];
-        for (int index = 0; index < count; index++) {
-            long length = shots.get(index).sourceReplayEndTime() - shots.get(index).sourceReplayStartTime();
-            if (length <= 0 || Long.MAX_VALUE - offsets[index] < length) return null;
-            offsets[index + 1] = offsets[index] + length;
-        }
-
-        long lowerStart = plan.sourceStartReplayTime();
-        long upperStart = plan.sourceEndReplayTime() - offsets[count];
-        for (int index = 0; index < count; index++) {
-            PlannedMontageShot shot = shots.get(index);
-            long peak = shot.sourceEvent().peakReplayTime();
-            lowerStart = Math.max(lowerStart, peak - offsets[index + 1]);
-            upperStart = Math.min(upperStart, peak - offsets[index]);
-            if (shot.locked()) {
-                long lockedStart = shot.sourceReplayStartTime() - offsets[index];
-                lowerStart = Math.max(lowerStart, lockedStart);
-                upperStart = Math.min(upperStart, lockedStart);
-            }
-        }
-        if (lowerStart > upperStart) return null;
-        long start = Math.max(lowerStart, Math.min(upperStart, shots.getFirst().sourceReplayStartTime()));
-        for (int index = 0; index <= count; index++) boundaries[index] = start + offsets[index];
-        return boundaries;
+        return List.copyOf(rawShots);
     }
 
     private static PlannedMontageShot applyCreativeTreatment(PlannedMontageShot creative,
@@ -263,11 +222,12 @@ public final class MontagePlanEditor {
                 request.easing(), request.lookAheadSeconds(), sourceStart, sourceEnd);
     }
 
+    /** Source time may jump forward between shots; it must not reverse or overlap. */
     private static boolean sourceMonotonic(List<PlannedMontageShot> shots) {
         long previousEnd = Long.MIN_VALUE;
         for (PlannedMontageShot shot : shots.stream().filter(PlannedMontageShot::enabled)
                 .sorted(Comparator.comparingInt(PlannedMontageShot::order)).toList()) {
-            if (previousEnd != Long.MIN_VALUE && shot.sourceReplayStartTime() != previousEnd) return false;
+            if (previousEnd != Long.MIN_VALUE && shot.sourceReplayStartTime() < previousEnd) return false;
             previousEnd = shot.sourceReplayEndTime();
         }
         return true;

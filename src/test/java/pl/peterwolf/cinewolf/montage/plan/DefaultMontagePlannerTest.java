@@ -335,7 +335,12 @@ class DefaultMontagePlannerTest {
         long previousEnd = Long.MIN_VALUE;
         double outputCursor = 0.0;
         for (PlannedMontageShot shot : enabled) {
-            if (previousEnd != Long.MIN_VALUE) assertEquals(previousEnd, shot.sourceReplayStartTime());
+            // Source may jump forward between highlight windows; it must not reverse or overlap.
+            if (previousEnd != Long.MIN_VALUE) {
+                assertTrue(shot.sourceReplayStartTime() >= previousEnd,
+                        "source reverse/overlap: previousEnd=" + previousEnd
+                                + " nextStart=" + shot.sourceReplayStartTime());
+            }
             assertTrue(shot.sourceEvent().peakReplayTime() >= shot.sourceReplayStartTime());
             assertTrue(shot.sourceEvent().peakReplayTime() <= shot.sourceReplayEndTime());
             assertEquals(outputCursor, shot.outputStartSeconds(), 1.0e-9);
@@ -353,6 +358,65 @@ class DefaultMontagePlannerTest {
                 plan.preset().style().maximumReplaySpeedChange());
         assertTrue(validation.valid(), () -> "mapping errors: " + validation.errors());
         assertFalse(plan.warnings().stream().anyMatch(warning -> warning.severity() == MontageWarning.Severity.ERROR));
+    }
+
+    @Test
+    void picksAttractiveScenesAcrossOneRegionAndJumpsBetweenThem() {
+        MontagePreset preset = preset(MontagePresetType.FIFTEEN_SECONDS);
+        // Three strong events far apart inside one long source region — continuous fill would drag in dead air.
+        ReplayAnalysisResult sparse = sparseHighlightAnalysis();
+        MontageRequest request = MontageRequest.fromPreset(preset, 0, 6_000, Optional.of(TestFixtures.TARGET));
+
+        MontagePlan plan = new DefaultMontagePlanner().createPlan(sparse, request,
+                new MontagePlanningContext(AVAILABLE, SamplingSettings.defaults()));
+
+        assertPlanValid(plan);
+        assertTrue(plan.warnings().stream().anyMatch(warning ->
+                warning.code().equals("montage.warning.highlight_jumps")));
+        long covered = plan.enabledShots().stream()
+                .mapToLong(shot -> shot.sourceReplayEndTime() - shot.sourceReplayStartTime())
+                .sum();
+        long span = plan.enabledShots().getLast().sourceReplayEndTime()
+                - plan.enabledShots().getFirst().sourceReplayStartTime();
+        assertTrue(span > covered,
+                "source span should exceed filmed ticks when dead air is jumped: span=" + span
+                        + " covered=" + covered);
+        assertTrue(plan.enabledShots().stream().flatMap(shot -> shot.planningReasons().stream())
+                .anyMatch(reason -> reason.equals("montage.reason.highlight_jump")));
+        for (int index = 1; index < plan.enabledShots().size(); index++) {
+            PlannedMontageShot previous = plan.enabledShots().get(index - 1);
+            PlannedMontageShot current = plan.enabledShots().get(index);
+            if (current.sourceReplayStartTime() > previous.sourceReplayEndTime()) {
+                assertEquals(previous.outputEndSeconds(), current.outputStartSeconds(), 1.0e-9);
+            }
+        }
+    }
+
+    private static ReplayAnalysisResult sparseHighlightAnalysis() {
+        ReplayAnalysisRequest request = ReplayAnalysisRequest.defaults(0, 6_000);
+        ReplayEntitySnapshot entity = ReplayEntitySnapshot.basic(TestFixtures.TARGET,
+                TestFixtures.pose(Vec3d.ZERO, Vec3d.ZERO, 0.0));
+        List<ReplaySample> samples = List.of(
+                new ReplaySample(0, Map.of(TestFixtures.TARGET, entity), List.of(), List.of()),
+                new ReplaySample(6_000, Map.of(TestFixtures.TARGET, entity), List.of(), List.of()));
+        long[] peaks = {200L, 2_500L, 5_200L};
+        ReplayEventType[] types = {ReplayEventType.COMBAT, ReplayEventType.HIGH_SPEED, ReplayEventType.LANDING};
+        java.util.ArrayList<ScoredReplayEvent> scored = new java.util.ArrayList<>();
+        for (int index = 0; index < peaks.length; index++) {
+            long peak = peaks[index];
+            ReplayEvent event = ReplayEvent.create(types[index], peak - 30, peak, peak + 30,
+                    Set.of(TestFixtures.TARGET), new Vec3d(index, 64, index), 0.9, 0.95,
+                    EventEvidence.of(EventEvidence.DetectionSource.DERIVED_MOVEMENT));
+            scored.add(new ScoredReplayEvent(event, 0.9, 0.9, 0.9, 0.9,
+                    0.0, 0.1, 0.0, 0.0, 0.95 - index * 0.01, List.of("sparse-highlight")));
+        }
+        List<ReplayEvent> events = scored.stream().map(ScoredReplayEvent::event).toList();
+        SampleSelection selection = new SampleSelection(samples, List.of(), samples, List.of());
+        ReplayAnalysisStatistics stats = new ReplayAnalysisStatistics(6_000, 2, 2, 0, 2, 1,
+                events.size(), events.size(), 1, Map.of());
+        return new ReplayAnalysisResult(request, selection, samples, Map.of(), events, events, scored,
+                List.of(), List.of(new RankedReplayTarget(TestFixtures.TARGET, 1.0, 6_000,
+                100.0, events.size(), List.of("test"))), stats, List.<AnalysisWarning>of());
     }
 
     private static ShotRequest withGeometry(ShotRequest source, double angle, double distance, double height,

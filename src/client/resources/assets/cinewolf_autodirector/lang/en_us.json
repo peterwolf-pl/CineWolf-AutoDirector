@@ -626,6 +626,8 @@
   "montage.warning.multi_source_segments": "Planning across %s discontinuous source regions.",
   "montage.warning.segment_without_events": "Source region %s has no usable events.",
   "montage.warning.segment_layout_failed": "Source region %s could not be laid out: %s",
+  "montage.warning.highlight_jumps": "Selected the strongest scenes and used %s Timelapse keyframe jump(s) to skip dead air.",
+  "montage.reason.highlight_jump": "Keyframe jump from a previous highlight window",
   "key.cinewolf.mark_moment": "Mark montage moment",
   "key.cinewolf.mark_fragment": "Mark montage fragment (start/end)",
   "key.cinewolf.cancel_fragment": "Cancel montage fragment",

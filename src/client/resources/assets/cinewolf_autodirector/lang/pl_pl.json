@@ -626,6 +626,8 @@
   "montage.warning.multi_source_segments": "Planowanie w %s nieciągłych regionach źródła.",
   "montage.warning.segment_without_events": "Region źródła %s nie ma użytecznych zdarzeń.",
   "montage.warning.segment_layout_failed": "Nie udało się ułożyć regionu %s: %s",
+  "montage.warning.highlight_jumps": "Wybrano najmocniejsze sceny i użyto %s skoku(ów) keyframe Timelapse, by pominąć martwy czas.",
+  "montage.reason.highlight_jump": "Skok keyframe z poprzedniego okna highlight",
   "key.cinewolf.mark_moment": "Oznacz moment montażu",
   "key.cinewolf.mark_fragment": "Oznacz fragment montażu (start/koniec)",
   "key.cinewolf.cancel_fragment": "Anuluj fragment montażu",

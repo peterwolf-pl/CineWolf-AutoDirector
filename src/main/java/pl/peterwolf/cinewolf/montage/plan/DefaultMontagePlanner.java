@@ -70,8 +70,6 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         int[] segmentOutputTicks = allocateSegmentOutputTicks(segments, totalSourceTicks, totalOutputTicks);
 
         List<PlannedMontageShot> shots = new ArrayList<>();
-        double outputCursor = 0.0;
-        int globalIndex = 0;
         ShotType previousType = null;
         for (int segmentIndex = 0; segmentIndex < segments.size(); segmentIndex++) {
             ReplaySourceSegment segment = segments.get(segmentIndex);
@@ -90,31 +88,20 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                         segmentIndex + 1, segment.label().isBlank() ? (segmentIndex + 1) : segment.label()));
                 continue;
             }
-            ContinuousLayout layout;
             try {
-                layout = continuousLayout(segmentCandidates, segmentRequest);
+                SegmentShots planned = planShotsForRegion(segmentCandidates, segmentRequest, analysis, context,
+                        target, previousType, warnings);
+                shots.addAll(planned.shots());
+                previousType = planned.lastShotType().orElse(previousType);
             } catch (IllegalArgumentException exception) {
                 warnings.add(MontageWarning.warning("montage.warning.segment_layout_failed",
                         segmentIndex + 1, exception.getMessage()));
-                continue;
-            }
-            List<ScoredReplayEvent> selected = layout.events();
-            long[] sourceBoundaries = layout.sourceBoundaries();
-            int[] outputTicks = layout.outputTicks();
-            for (int index = 0; index < selected.size(); index++) {
-                PlannedMontageShot shot = buildShot(selected.get(index), sourceBoundaries[index],
-                        sourceBoundaries[index + 1], outputTicks[index] / 20.0, outputCursor, globalIndex,
-                        selected.size(), previousType, target, analysis, segmentRequest, context, warnings);
-                shots.add(shot);
-                outputCursor += shot.outputDurationSeconds();
-                previousType = shot.shotType();
-                globalIndex++;
             }
         }
         if (shots.isEmpty()) {
             throw new IllegalArgumentException("No detected replay events can be planned across source segments");
         }
-        // Re-index and pack output times to remove unused bridge ticks when some segments failed.
+        // Re-index and pack output times; Timelapse bridges any source cuts between regions/highlights.
         List<PlannedMontageShot> packed = packShotsWithSegmentBridges(shots);
         return finalizePlan(request, context, packed, warnings);
     }
@@ -124,27 +111,75 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                                              List<MontageWarning> warnings) {
         List<ScoredReplayEvent> candidates = candidates(analysis, request, target);
         if (candidates.isEmpty()) throw new IllegalArgumentException("No detected replay events can be planned");
+        SegmentShots planned = planShotsForRegion(candidates, request, analysis, context, target, null, warnings);
+        List<PlannedMontageShot> packed = packShotsWithSegmentBridges(planned.shots());
+        return finalizePlan(request, context, packed, warnings);
+    }
+
+    /**
+     * Prefer highlight-jump layout: pick the most attractive events anywhere in the region and leave
+     * source gaps between them. Flashback Timelapse bridges those gaps with keyframe jumps. Falls back
+     * to a continuous source window when isolated windows cannot be fitted.
+     */
+    private SegmentShots planShotsForRegion(List<ScoredReplayEvent> candidates, MontageRequest request,
+                                            ReplayAnalysisResult analysis, MontagePlanningContext context,
+                                            TargetReference target, ShotType previousType,
+                                            List<MontageWarning> warnings) {
+        Optional<HighlightLayout> highlight = highlightJumpLayout(candidates, request);
+        if (highlight.isPresent()) {
+            HighlightLayout layout = highlight.orElseThrow();
+            List<ScoredReplayEvent> selected = layout.events();
+            if (selected.stream().map(value -> value.event().eventId()).distinct().count() < selected.size()) {
+                warnings.add(MontageWarning.warning("montage.warning.events_reused",
+                        selected.stream().map(value -> value.event().eventId()).distinct().count(),
+                        selected.size()));
+            }
+            int jumpCount = 0;
+            for (int index = 1; index < selected.size(); index++) {
+                if (layout.sourceStarts()[index] > layout.sourceEnds()[index - 1]) jumpCount++;
+            }
+            if (jumpCount > 0) {
+                warnings.add(MontageWarning.warning("montage.warning.highlight_jumps", jumpCount));
+            }
+            List<PlannedMontageShot> shots = new ArrayList<>(selected.size());
+            ShotType previous = previousType;
+            double outputCursor = 0.0;
+            for (int index = 0; index < selected.size(); index++) {
+                PlannedMontageShot shot = buildShot(selected.get(index), layout.sourceStarts()[index],
+                        layout.sourceEnds()[index], layout.outputTicks()[index] / 20.0, outputCursor, index,
+                        selected.size(), previous, target, analysis, request, context, warnings);
+                if (index > 0 && layout.sourceStarts()[index] > layout.sourceEnds()[index - 1]) {
+                    List<String> reasons = new ArrayList<>(shot.planningReasons());
+                    reasons.add("montage.reason.highlight_jump");
+                    shot = shot.withPlanningReasons(reasons);
+                }
+                shots.add(shot);
+                outputCursor += shot.outputDurationSeconds();
+                previous = shot.shotType();
+            }
+            return new SegmentShots(shots, Optional.ofNullable(previous));
+        }
+
         ContinuousLayout layout = continuousLayout(candidates, request);
         List<ScoredReplayEvent> selected = layout.events();
         if (selected.stream().map(value -> value.event().eventId()).distinct().count() < selected.size()) {
             warnings.add(MontageWarning.warning("montage.warning.events_reused",
                     selected.stream().map(value -> value.event().eventId()).distinct().count(), selected.size()));
         }
-        int shotCount = selected.size();
-        List<PlannedMontageShot> shots = new ArrayList<>(shotCount);
+        List<PlannedMontageShot> shots = new ArrayList<>(selected.size());
         long[] sourceBoundaries = layout.sourceBoundaries();
         int[] outputTicks = layout.outputTicks();
         double outputCursor = 0.0;
-        ShotType previousType = null;
-        for (int index = 0; index < shotCount; index++) {
+        ShotType previous = previousType;
+        for (int index = 0; index < selected.size(); index++) {
             PlannedMontageShot shot = buildShot(selected.get(index), sourceBoundaries[index],
-                    sourceBoundaries[index + 1], outputTicks[index] / 20.0, outputCursor, index, shotCount,
-                    previousType, target, analysis, request, context, warnings);
+                    sourceBoundaries[index + 1], outputTicks[index] / 20.0, outputCursor, index, selected.size(),
+                    previous, target, analysis, request, context, warnings);
             shots.add(shot);
             outputCursor += shot.outputDurationSeconds();
-            previousType = shot.shotType();
+            previous = shot.shotType();
         }
-        return finalizePlan(request, context, shots, warnings);
+        return new SegmentShots(shots, Optional.ofNullable(previous));
     }
 
     private PlannedMontageShot buildShot(ScoredReplayEvent scored, long sourceStart, long sourceEnd,
@@ -245,22 +280,18 @@ public final class DefaultMontagePlanner implements MontagePlanner {
     }
 
     /**
-     * Rebuilds order indices and inserts a single-output-tick gap between shots that jump in source time,
-     * so Timelapse can bridge multi-region cuts without overlapping output.
+     * Rebuilds order indices and packs output time contiguously. Source cuts (highlight jumps / multi-region)
+     * keep abutting output endpoints; Flashback Timelapse bridges them by advancing at least one output tick
+     * at write time ({@code montage.timeline.source_cut_bridged}).
      */
     private static List<PlannedMontageShot> packShotsWithSegmentBridges(List<PlannedMontageShot> shots) {
         if (shots.isEmpty()) return List.of();
         List<PlannedMontageShot> result = new ArrayList<>(shots.size());
         double cursor = 0.0;
-        PlannedMontageShot previous = null;
         for (int index = 0; index < shots.size(); index++) {
             PlannedMontageShot shot = shots.get(index);
-            if (previous != null && shot.sourceReplayStartTime() > previous.sourceReplayEndTime()) {
-                cursor += 1.0 / 20.0;
-            }
             result.add(shot.withOrderAndOutput(index, cursor));
             cursor += shot.outputDurationSeconds();
-            previous = shot;
         }
         return List.copyOf(result);
     }
@@ -316,6 +347,152 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         return analysis.rankedEvents().stream()
                 .filter(value -> value.event().peakReplayTime() >= request.sourceStartReplayTime()
                         && value.event().peakReplayTime() <= request.sourceEndReplayTime()).toList();
+    }
+
+    /**
+     * Builds a montage from the best-scoring diverse events in the region. Each shot gets a tight source
+     * window around its peak; non-adjacent windows become Timelapse keyframe jumps rather than dead air.
+     */
+    private static Optional<HighlightLayout> highlightJumpLayout(List<ScoredReplayEvent> candidates,
+                                                                 MontageRequest request) {
+        if (candidates.isEmpty()) return Optional.empty();
+        int totalOutputTicks = Math.max(1, (int) Math.round(request.outputDurationSeconds() * 20.0));
+        int minimumOutputTicks = Math.max(1, (int) Math.ceil(request.minimumShotDuration() * 20.0 - 1.0e-9));
+        int maximumOutputTicks = Math.max(minimumOutputTicks,
+                (int) Math.floor(request.maximumShotDuration() * 20.0 + 1.0e-9));
+        int minimumSourceTicks = request.allowReplaySpeedChanges()
+                ? Math.max(1, (int) Math.ceil(minimumOutputTicks * request.minimumReplaySpeed() - 1.0e-9))
+                : minimumOutputTicks;
+        int maximumSourceTicks = request.allowReplaySpeedChanges()
+                ? Math.max(minimumSourceTicks,
+                (int) Math.floor(maximumOutputTicks * request.maximumReplaySpeed() + 1.0e-9))
+                : maximumOutputTicks;
+
+        for (boolean allowReusedEvents : List.of(false, true)) {
+            for (int count : shotCounts(request)) {
+                if ((long) count * minimumOutputTicks > totalOutputTicks
+                        || (long) count * maximumOutputTicks < totalOutputTicks) continue;
+                List<ScoredReplayEvent> base = selectDiverseEvents(candidates, count);
+                if (base.isEmpty()) continue;
+                List<ScoredReplayEvent> selection = chronological(repeatToCount(base, count));
+                boolean reusesEvent = selection.stream().map(value -> value.event().eventId())
+                        .distinct().count() < selection.size();
+                if (!allowReusedEvents && reusesEvent) continue;
+
+                int[] outputTicks = allocateOutputTicksByScore(selection, totalOutputTicks,
+                        minimumOutputTicks, maximumOutputTicks);
+                if (outputTicks == null) continue;
+
+                int[] sourceTicks = new int[count];
+                for (int index = 0; index < count; index++) {
+                    double speed = replaySpeed(selection.get(index).event(), request);
+                    int desired = request.allowReplaySpeedChanges()
+                            ? Math.max(1, (int) Math.round(outputTicks[index] * speed))
+                            : outputTicks[index];
+                    sourceTicks[index] = Math.max(minimumSourceTicks, Math.min(maximumSourceTicks, desired));
+                }
+                if (!validOutputAllocation(outputTicks, sourceTicks, totalOutputTicks,
+                        minimumOutputTicks, maximumOutputTicks, request)) {
+                    // Prefer 1x windows when speed allocation is inconsistent.
+                    if (request.allowReplaySpeedChanges()) {
+                        System.arraycopy(outputTicks, 0, sourceTicks, 0, count);
+                        if (!validOutputAllocation(outputTicks, sourceTicks, totalOutputTicks,
+                                minimumOutputTicks, maximumOutputTicks, request)) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+
+                Optional<long[][]> windows = fitHighlightWindows(selection, sourceTicks,
+                        request.sourceStartReplayTime(), request.sourceEndReplayTime());
+                if (windows.isEmpty()) continue;
+                long[] starts = windows.orElseThrow()[0];
+                long[] ends = windows.orElseThrow()[1];
+                return Optional.of(new HighlightLayout(selection, starts, ends, outputTicks));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static int[] allocateOutputTicksByScore(List<ScoredReplayEvent> events, int totalTicks,
+                                                    int minimumTicks, int maximumTicks) {
+        int count = events.size();
+        if (count == 0 || (long) count * minimumTicks > totalTicks
+                || (long) count * maximumTicks < totalTicks) return null;
+        double[] weights = new double[count];
+        double weightSum = 0.0;
+        for (int index = 0; index < count; index++) {
+            weights[index] = Math.max(0.05, events.get(index).finalScore());
+            weightSum += weights[index];
+        }
+        int[] output = new int[count];
+        int assigned = 0;
+        for (int index = 0; index < count; index++) {
+            int share = (int) Math.round(totalTicks * (weights[index] / weightSum));
+            output[index] = Math.max(minimumTicks, Math.min(maximumTicks, share));
+            assigned += output[index];
+        }
+        int difference = totalTicks - assigned;
+        while (difference != 0) {
+            int best = -1;
+            double bestPenalty = Double.POSITIVE_INFINITY;
+            int direction = difference > 0 ? 1 : -1;
+            for (int index = 0; index < count; index++) {
+                int candidate = output[index] + direction;
+                if (candidate < minimumTicks || candidate > maximumTicks) continue;
+                double ideal = totalTicks * (weights[index] / weightSum);
+                double penalty = Math.abs(candidate - ideal) - Math.abs(output[index] - ideal);
+                if (penalty < bestPenalty - 1.0e-9) {
+                    best = index;
+                    bestPenalty = penalty;
+                }
+            }
+            if (best < 0) return null;
+            output[best] += direction;
+            difference -= direction;
+        }
+        return output;
+    }
+
+    /**
+     * Places non-overlapping source windows around each event peak. Later windows may start after earlier
+     * ones end (source cut / keyframe jump); they may not reverse or overlap.
+     */
+    private static Optional<long[][]> fitHighlightWindows(List<ScoredReplayEvent> events, int[] sourceTicks,
+                                                          long rangeStart, long rangeEnd) {
+        int count = events.size();
+        if (count == 0 || sourceTicks.length != count) return Optional.empty();
+        long[] starts = new long[count];
+        long[] ends = new long[count];
+        long previousEnd = rangeStart;
+        for (int index = 0; index < count; index++) {
+            long peak = events.get(index).event().peakReplayTime();
+            long length = sourceTicks[index];
+            if (length <= 0 || peak < rangeStart || peak > rangeEnd) return Optional.empty();
+            // start ∈ [peak - length, peak] ∩ [rangeStart, rangeEnd - length] ∩ [previousEnd, +∞)
+            // so the peak stays inside [start, start + length] and windows never reverse/overlap.
+            long lower = Math.max(previousEnd, Math.max(rangeStart, peak - length));
+            long upper = Math.min(peak, rangeEnd - length);
+            if (lower > upper) {
+                // Peak is trapped under the previous window; try a minimal abutment that still covers peak.
+                long abutStart = previousEnd;
+                long abutEnd = abutStart + length;
+                if (abutStart <= peak && peak <= abutEnd && abutEnd <= rangeEnd && abutStart >= rangeStart) {
+                    starts[index] = abutStart;
+                    ends[index] = abutEnd;
+                    previousEnd = abutEnd;
+                    continue;
+                }
+                return Optional.empty();
+            }
+            long preferred = peak - length / 2L;
+            starts[index] = Math.max(lower, Math.min(upper, preferred));
+            ends[index] = starts[index] + length;
+            previousEnd = ends[index];
+        }
+        return Optional.of(new long[][]{starts, ends});
     }
 
     private static ContinuousLayout continuousLayout(List<ScoredReplayEvent> candidates, MontageRequest request) {
@@ -766,6 +943,38 @@ public final class DefaultMontagePlanner implements MontagePlanner {
         @Override
         public int[] outputTicks() {
             return outputTicks.clone();
+        }
+    }
+
+    private record HighlightLayout(List<ScoredReplayEvent> events, long[] sourceStarts, long[] sourceEnds,
+                                   int[] outputTicks) {
+        private HighlightLayout {
+            events = List.copyOf(events);
+            sourceStarts = sourceStarts.clone();
+            sourceEnds = sourceEnds.clone();
+            outputTicks = outputTicks.clone();
+        }
+
+        @Override
+        public long[] sourceStarts() {
+            return sourceStarts.clone();
+        }
+
+        @Override
+        public long[] sourceEnds() {
+            return sourceEnds.clone();
+        }
+
+        @Override
+        public int[] outputTicks() {
+            return outputTicks.clone();
+        }
+    }
+
+    private record SegmentShots(List<PlannedMontageShot> shots, Optional<ShotType> lastShotType) {
+        private SegmentShots {
+            shots = List.copyOf(shots);
+            lastShotType = Objects.requireNonNullElse(lastShotType, Optional.empty());
         }
     }
 }
