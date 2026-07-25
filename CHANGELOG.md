@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.0.20 - 2026-07-26
 
+- Updated top-right video logo/watermark to use transparent background (`icon_trans.png`)
 - After writing a montage to Flashback, set export I/O to the full montage source range so Start Export covers every written keyframe
 - Flashback 0.41.1 capabilities: camera **roll** and **entity tracking** are available (API present); stop showing permanent “Unavailable …” banners for them
 
