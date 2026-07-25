@@ -92,7 +92,7 @@ public final class DefaultShotTemplateResolver implements ShotTemplateResolver {
                 : rpm;
         double resolvedSpeed = switch (shotType) {
             case CHASE, SIDE_TRACKING -> clamp(cameraSpeed * 1.25, 1.0, 28.0);
-            case STATIC_TRACKING -> clamp(cameraSpeed * 0.5, 0.5, 8.0);
+            case STATIC_TRACKING, ROOM_CORNER -> clamp(cameraSpeed * 0.5, 0.5, 8.0);
             default -> cameraSpeed;
         };
         double lookAhead = request.aspectRatio() == OutputAspectRatio.VERTICAL_9_16

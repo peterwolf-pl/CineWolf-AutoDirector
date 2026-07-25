@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3 - 2026-07-25
+
+- New shot **Room Corner** (`ROOM_CORNER`): for closed rooms, camera sits in a corner at the player’s **eye height** and tracks them (CCTV-style)
+  - path bounds estimate a room corner; client world pass snaps to real walls when available
+  - preferred by planner for pause / building / indoor-like events
+
 ## 2.0.2 - 2026-07-25
 
 - Indoor ceiling clearance: when a solid roof sits above the subject, the camera is pulled just under it (not through the ceiling)

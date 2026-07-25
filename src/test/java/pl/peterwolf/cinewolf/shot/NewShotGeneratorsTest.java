@@ -72,6 +72,25 @@ class NewShotGeneratorsTest {
     }
 
     @Test
+    void roomCornerStaysFixedInXzAtEyeHeightAndLooksAtSubject() {
+        ShotRequest request = TestFixtures.request(ShotType.ROOM_CORNER, 0.0, 3.0, RotationDirection.CLOCKWISE, 0, 40);
+        CameraPathPlan plan = new RoomCornerShotGenerator().generate(request,
+                TestFixtures.context(tick -> TestFixtures.pose(
+                        new Vec3d(tick * 0.08, 0.0, tick * 0.02),
+                        new Vec3d(0.0, 0.0, 0.0), 0.0)));
+        assertTrue(plan.valid());
+        assertTrue(plan.samples().size() >= 2);
+        Vec3d first = plan.samples().getFirst().position();
+        Vec3d last = plan.samples().getLast().position();
+        // Fixed corner in XZ; only eye-height Y may follow the subject slightly.
+        assertEquals(first.x(), last.x(), 1.0e-6);
+        assertEquals(first.z(), last.z(), 1.0e-6);
+        // Eye height tracks focus Y (pose focus is position + (0,1.62,0) in fixtures typically).
+        assertEquals(plan.samples().getFirst().lookAtPoint().y(), first.y(), 1.0e-3);
+        assertTrue(plan.warnings().stream().anyMatch(w -> w.code().equals("room_corner.placed")));
+    }
+
+    @Test
     void staticTrackingKeepsFixedCameraByDefault() {
         ShotRequest request = TestFixtures.request(ShotType.STATIC_TRACKING, 0.0, 2.0, RotationDirection.CLOCKWISE, 0, 40);
         CameraPathPlan plan = new StaticTrackingShotGenerator().generate(request,

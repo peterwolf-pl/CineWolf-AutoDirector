@@ -14,6 +14,7 @@ import pl.peterwolf.cinewolf.camera.CollisionPathContinuity;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.CameraSample;
 import pl.peterwolf.cinewolf.model.PathWarning;
+import pl.peterwolf.cinewolf.model.ShotType;
 import pl.peterwolf.cinewolf.model.Vec3d;
 
 import java.util.ArrayList;
@@ -70,6 +71,17 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
             Vec3d position = sample.position();
             boolean resolvedSafely = true;
             boolean constrained = sample.collisionConstrained();
+
+            // Indoor corner shots: snap the estimated corner onto real walls, eye-height tracking.
+            if (originalPath.request() != null
+                    && originalPath.request().shotType() == ShotType.ROOM_CORNER
+                    && sample.lookAtPoint() != null) {
+                Vec3d snapped = snapToRoomCorner(level, sample.lookAtPoint(), position, clearance);
+                if (snapped.distanceTo(position) > 1.0e-4) {
+                    position = snapped;
+                    constrained = true;
+                }
+            }
 
             if (!ceilingOnly) {
                 java.util.function.Predicate<Vec3d> safety =
@@ -173,6 +185,60 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                 unresolved == 0
                         ? (ceilingClamped > 0 ? "Ceiling clearance applied" : "Collision avoidance completed")
                         : "Continuity fallback: " + lastUnresolvedReason);
+    }
+
+    /**
+     * Finds two roughly perpendicular nearby walls from the subject and places the camera in that
+     * indoor corner at the subject's eye height, inset from both walls.
+     */
+    static Vec3d snapToRoomCorner(ClientLevel level, Vec3d focus, Vec3d estimatedCorner, double clearance) {
+        if (level == null || focus == null || !focus.isFinite() || estimatedCorner == null) return estimatedCorner;
+        double inset = Math.max(0.25, clearance + 0.15);
+        double maxProbe = 12.0;
+        // Cardinal wall probes from subject focus (horizontal).
+        double[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        double[] hits = new double[4];
+        boolean[] hit = new boolean[4];
+        for (int i = 0; i < 4; i++) {
+            OptionalDouble d = horizontalWallDistance(level, focus, dirs[i][0], dirs[i][1], maxProbe);
+            if (d.isPresent()) {
+                hits[i] = d.getAsDouble();
+                hit[i] = true;
+            }
+        }
+        // Pair X-axis walls (0:+X,1:-X) with Z-axis walls (2:+Z,3:-Z) → four possible corners.
+        int[][] pairs = {{0, 2}, {0, 3}, {1, 2}, {1, 3}};
+        double bestScore = Double.NEGATIVE_INFINITY;
+        Vec3d best = estimatedCorner;
+        for (int[] pair : pairs) {
+            if (!hit[pair[0]] || !hit[pair[1]]) continue;
+            double dx = dirs[pair[0]][0] * Math.max(0.0, hits[pair[0]] - inset);
+            double dz = dirs[pair[1]][1] * Math.max(0.0, hits[pair[1]] - inset);
+            Vec3d corner = new Vec3d(focus.x() + dx, focus.y(), focus.z() + dz);
+            // Prefer the corner closest to the generator estimate (stable with path bounds).
+            double score = -corner.distanceTo(new Vec3d(estimatedCorner.x(), focus.y(), estimatedCorner.z()));
+            // Prefer tighter rooms (both walls close).
+            score -= (hits[pair[0]] + hits[pair[1]]) * 0.05;
+            if (score > bestScore) {
+                bestScore = score;
+                best = corner;
+            }
+        }
+        // Always lock Y to subject eye height for this shot type.
+        return new Vec3d(best.x(), focus.y(), best.z());
+    }
+
+    private static OptionalDouble horizontalWallDistance(ClientLevel level, Vec3d origin,
+                                                          double dirX, double dirZ, double maxDistance) {
+        Vec3 start = vector(origin);
+        Vec3 end = new Vec3(origin.x() + dirX * maxDistance, origin.y(), origin.z() + dirZ * maxDistance);
+        BlockHitResult hit = level.clip(new ClipContext(start, end, ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()));
+        if (hit.getType() != HitResult.Type.BLOCK) return OptionalDouble.empty();
+        double dx = hit.getLocation().x - origin.x();
+        double dz = hit.getLocation().z - origin.z();
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        return dist > 0.05 && dist < maxDistance ? OptionalDouble.of(dist) : OptionalDouble.empty();
     }
 
     /**

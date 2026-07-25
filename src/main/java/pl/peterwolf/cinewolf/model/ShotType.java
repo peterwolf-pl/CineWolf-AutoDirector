@@ -11,6 +11,8 @@ public enum ShotType {
     CRANE_DOWN("Crane Down"),
     SPIRAL("Spiral"),
     STATIC_TRACKING("Static Tracking"),
+    /** Fixed indoor corner at eye height, tracking the subject (CCTV-style room shot). */
+    ROOM_CORNER("Room Corner"),
     SIDE_TRACKING("Side Tracking"),
     CHASE("Chase"),
     CLOSE_DETAIL("Close Detail"),
@@ -27,7 +29,8 @@ public enum ShotType {
     }
 
     public boolean isDynamicTracking() {
-        return this == FOLLOW || this == CHASE || this == SIDE_TRACKING || this == STATIC_TRACKING;
+        return this == FOLLOW || this == CHASE || this == SIDE_TRACKING || this == STATIC_TRACKING
+                || this == ROOM_CORNER;
     }
 
     public boolean prefersVehicleTargets() {
