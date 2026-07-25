@@ -323,6 +323,8 @@
   "cinewolf.montage.generation.idle": "Ścieżki kamery nie zostały wygenerowane.",
   "cinewolf.montage.generation.paths": "Generowanie ścieżek kamery: %s/%s",
   "cinewolf.montage.generation.collision": "Sprawdzanie historycznych próbek kolizji: %s/%s",
+  "cinewolf.montage.generation.ceiling": "Utrzymywanie kamery pod sufitem: %s/%s",
+  "cinewolf.path_warning.ceiling_clamped": "Kamerę ściągnięto pod sufit dla %s próbek.",
   "cinewolf.montage.generation.restoring": "Przywracanie replaya po kontroli kolizji…",
   "cinewolf.montage.generation.ready": "Gotowe ścieżki: %s; uproszczone klatki kamery: %s.",
   "cinewolf.montage.generation.written": "Zapisano: kamera %s, FOV %s, czas replaya %s klatek.",

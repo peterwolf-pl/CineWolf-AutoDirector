@@ -145,10 +145,8 @@ public final class MontageGenerationController implements AutoCloseable {
     private void acceptGeneratedPaths(GenerationJob current, List<GeneratedPath> paths) {
         if (current.id != generations.get() || job != current || !adapter.isReplayEditorOpen()) return;
         current.generated = paths;
-        if (!config.montage.obstacleHandling().adjustsCameraPath()) {
-            finish(current, paths);
-            return;
-        }
+        // Always run a world pass: full AVOID collision, otherwise ceiling-only so indoor shots stay under roofs.
+        current.ceilingOnly = !config.montage.obstacleHandling().adjustsCameraPath();
         current.restoreTick = adapter.getCurrentReplayTime();
         current.restorePaused = adapter.replayPaused();
         current.collisionItems = collisionItems(paths);
@@ -166,7 +164,10 @@ public final class MontageGenerationController implements AutoCloseable {
         current.stableTicks = 0;
         adapter.setReplayPaused(true);
         state = State.COLLISION_SAMPLING;
-        setStatus("cinewolf.montage.generation.collision", 0, current.collisionItems.size());
+        setStatus(current.ceilingOnly
+                        ? "cinewolf.montage.generation.ceiling"
+                        : "cinewolf.montage.generation.collision",
+                0, current.collisionItems.size());
         adapter.goToReplayTick(current.collisionItems.getFirst().replayTick());
     }
 
@@ -224,7 +225,8 @@ public final class MontageGenerationController implements AutoCloseable {
             CollisionResolver.CollisionResolutionResult resolution = collisionResolver.resolve(oneSample,
                     new CollisionResolver.CollisionContext(Minecraft.getInstance().level),
                     new CollisionResolver.CollisionSettings(0.28),
-                    current.collisionStates.get(sameTick.pathIndex()));
+                    current.collisionStates.get(sameTick.pathIndex()),
+                    current.ceilingOnly);
             CameraSample adjusted = resolution.path().samples().isEmpty()
                     ? sample : resolution.path().samples().getFirst();
             current.adjustedSamples.get(sameTick.pathIndex()).set(sameTick.sampleIndex(), adjusted);
@@ -249,8 +251,10 @@ public final class MontageGenerationController implements AutoCloseable {
         }
         current.collisionIndex = cursor;
         progress = 0.55f + current.collisionIndex / (float) current.collisionItems.size() * 0.4f;
-        setStatus("cinewolf.montage.generation.collision", current.collisionIndex,
-                current.collisionItems.size());
+        setStatus(current.ceilingOnly
+                        ? "cinewolf.montage.generation.ceiling"
+                        : "cinewolf.montage.generation.collision",
+                current.collisionIndex, current.collisionItems.size());
         if (current.collisionIndex >= current.collisionItems.size()) startRestore(current);
         else adapter.goToReplayTick(current.collisionItems.get(current.collisionIndex).replayTick());
     }
@@ -554,6 +558,8 @@ public final class MontageGenerationController implements AutoCloseable {
         private boolean restorePaused;
         private boolean cancelAfterRestore;
         private boolean collisionFatal;
+        /** When true, world pass only pulls cameras under ceilings (no lateral AVOID probes). */
+        private boolean ceilingOnly;
 
         private GenerationJob(long id, MontagePlan plan, ReplayAnalysisResult analysis) {
             this.id = id;

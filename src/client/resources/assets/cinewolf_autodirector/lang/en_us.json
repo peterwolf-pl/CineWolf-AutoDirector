@@ -323,6 +323,8 @@
   "cinewolf.montage.generation.idle": "Camera paths have not been generated.",
   "cinewolf.montage.generation.paths": "Generating camera paths: %s/%s",
   "cinewolf.montage.generation.collision": "Checking historical collision samples: %s/%s",
+  "cinewolf.montage.generation.ceiling": "Keeping cameras under ceilings: %s/%s",
+  "cinewolf.path_warning.ceiling_clamped": "Camera pulled under ceiling for %s sample(s).",
   "cinewolf.montage.generation.restoring": "Restoring replay after collision checks…",
   "cinewolf.montage.generation.ready": "%s paths ready, %s simplified camera keyframes.",
   "cinewolf.montage.generation.written": "Written: %s camera, %s FOV, %s replay-time keyframes.",

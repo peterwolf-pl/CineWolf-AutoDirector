@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 - 2026-07-25
+
+- Indoor ceiling clearance: when a solid roof sits above the subject, the camera is pulled just under it (not through the ceiling)
+  - applies during the world collision pass (AVOID) and as a lightweight ceiling-only pass otherwise
+  - probes both the column above the player’s head and the camera column
+
 ## 2.0.1 - 2026-07-25
 
 - Fixed H/J/K montage marks during live Flashback recording:
