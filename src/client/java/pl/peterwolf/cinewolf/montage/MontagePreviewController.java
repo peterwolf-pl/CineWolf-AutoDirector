@@ -68,6 +68,7 @@ public final class MontagePreviewController {
         playing = false;
         restoring = false;
         statusKey = "cinewolf.montage.preview.paused";
+        pl.peterwolf.cinewolf.CineWolfAutoDirectorClient.setExportWatermarkActive(true);
         seekForCurrentFrame();
         return true;
     }

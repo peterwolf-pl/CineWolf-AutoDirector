@@ -28,6 +28,13 @@ public final class MontageConfig {
      * and when generating third-person paths. Range roughly {@code -2.25} … {@code 2.25}.
      */
     public double thirdPersonHeight = 0.0;
+    /**
+     * When true, burn a slightly transparent CineWolf icon (TV-style bug) into the top-right of
+     * AutoDirector montage previews/exports.
+     */
+    public boolean exportWatermark = true;
+    /** Watermark opacity in {@code [0.15, 0.95]}. Default ~0.55. */
+    public double exportWatermarkOpacity = 0.55;
     public double cameraMovementIntensity = 0.65;
     public double cutFrequency = 0.65;
     public double minimumShotDuration = 2.5;
@@ -121,6 +128,7 @@ public final class MontageConfig {
         if (maximumShotDuration < minimumShotDuration) maximumShotDuration = minimumShotDuration;
         eventSensitivity = clamp(eventSensitivity, 0.6, 0.0, 1.0);
         thirdPersonHeight = clamp(thirdPersonHeight, 0.0, -2.25, 2.25);
+        exportWatermarkOpacity = clamp(exportWatermarkOpacity, 0.55, 0.15, 0.95);
         coarseSamplesPerSecond = Math.max(2, Math.min(5, coarseSamplesPerSecond));
         detailedSamplesPerSecond = Math.max(4, Math.min(20, detailedSamplesPerSecond));
         maximumDetailedSamples = Math.max(0, Math.min(4_000, maximumDetailedSamples));

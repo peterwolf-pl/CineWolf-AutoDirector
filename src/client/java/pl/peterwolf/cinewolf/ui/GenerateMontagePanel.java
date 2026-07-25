@@ -470,6 +470,15 @@ public final class GenerateMontagePanel {
         changed |= toggle("cinewolf.montage.field.chronological", settings.preferChronologicalOrder,
                 "cinewolf.montage.tooltip.chronological",
                 value -> settings.preferChronologicalOrder = value);
+        changed |= toggle("cinewolf.montage.field.export_watermark", settings.exportWatermark,
+                "cinewolf.montage.tooltip.export_watermark",
+                value -> settings.exportWatermark = value);
+        if (settings.exportWatermark) {
+            changed |= number(tr("cinewolf.montage.field.export_watermark_opacity"),
+                    settings.exportWatermarkOpacity, 0.05, 0.15, 0.95,
+                    tr("cinewolf.montage.tooltip.export_watermark_opacity"),
+                    value -> settings.exportWatermarkOpacity = value);
+        }
         ObstacleHandlingMode[] modes = ObstacleHandlingMode.values();
         ObstacleHandlingMode currentMode = settings.obstacleHandling();
         comboValue.set(currentMode.ordinal());
@@ -1230,6 +1239,8 @@ public final class GenerateMontagePanel {
         if (result.success()) {
             notices.add(new ActionNotice(tr("cinewolf.montage.write.success", result.cameraKeyframes(),
                     result.fovKeyframes(), result.timelapseKeyframes()), NoticeSeverity.SUCCESS));
+            // Keep TV-style brand bug on for export of this AutoDirector montage.
+            pl.peterwolf.cinewolf.CineWolfAutoDirectorClient.setExportWatermarkActive(true);
         } else {
             String error = result.errors().isEmpty() ? tr("cinewolf.montage.error.timeline_write_failed")
                     : localizeCode(result.errors().getFirst());
@@ -1532,6 +1543,14 @@ public final class GenerateMontagePanel {
             java.util.Map<String, String> values = encodedValues(key);
             return tr("montage.reason.shot_fallback", localizeArgument(values.get("requested")),
                     localizeArgument(values.get("chosen")));
+        }
+        if (key.startsWith("montage.reason.occlusion_shot_fallback;")) {
+            java.util.Map<String, String> values = encodedValues(key);
+            String from = values.getOrDefault("from", "?");
+            String to = values.getOrDefault("to", "?");
+            return tr("montage.reason.occlusion_shot_fallback_detail",
+                    tr("cinewolf.shot." + from.toLowerCase(Locale.ROOT)),
+                    tr("cinewolf.shot." + to.toLowerCase(Locale.ROOT)));
         }
         String scoreReason = localizeScoreReason(key);
         if (scoreReason != null) return scoreReason;

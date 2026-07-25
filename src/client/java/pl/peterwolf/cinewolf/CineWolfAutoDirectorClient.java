@@ -18,6 +18,7 @@ import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.montage.MontageHighlightController;
 import pl.peterwolf.cinewolf.montage.highlight.MontageHighlightStore;
 import pl.peterwolf.cinewolf.preview.CameraPathPreviewRenderer;
+import pl.peterwolf.cinewolf.preview.CineWolfBrandWatermark;
 import pl.peterwolf.cinewolf.preview.PreviewController;
 import pl.peterwolf.cinewolf.preview.VerticalSafeAreaOverlay;
 import pl.peterwolf.cinewolf.montage.MontageAnalysisController;
@@ -36,6 +37,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
     private static MontagePreviewController montagePreviewController;
     private static MontageHighlightController montageHighlightController;
     private static VerticalSafeAreaOverlay verticalSafeAreaOverlay;
+    private static CineWolfBrandWatermark brandWatermark;
     private static boolean compatibilityMessageShown;
     private static boolean editorIntegrationEnabled;
 
@@ -73,13 +75,17 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
         montageGenerationController = new MontageGenerationController(adapter, configManager.get(), previewRenderer, LOGGER);
         montagePreviewController = new MontagePreviewController(adapter);
         verticalSafeAreaOverlay = new VerticalSafeAreaOverlay();
+        brandWatermark = CineWolfBrandWatermark.register(configManager.get());
         GenerateMontagePanel montagePanel = new GenerateMontagePanel(adapter, configManager,
                 montageAnalysisController, montageGenerationController, montagePreviewController,
                 verticalSafeAreaOverlay, previewController, LOGGER, highlightStore);
         panel = new AutoDirectorPanel(adapter, previewController, configManager, montagePanel);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (!adapter.isReplayEditorOpen() && verticalSafeAreaOverlay != null) {
-                verticalSafeAreaOverlay.hide();
+            if (!adapter.isReplayEditorOpen()) {
+                if (verticalSafeAreaOverlay != null) verticalSafeAreaOverlay.hide();
+                // Keep watermark active during Flashback export (editor UI may close); only clear
+                // when the player leaves the replay world entirely.
+                if (brandWatermark != null && client.level == null) brandWatermark.setActive(false);
             }
             if (adapter.isReplayEditorOpen()) {
                 OcclusionClipController.get().tick();
@@ -100,6 +106,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
             montagePreviewController.exit();
             adapter.close();
             if (verticalSafeAreaOverlay != null) verticalSafeAreaOverlay.hide();
+            if (brandWatermark != null) brandWatermark.setActive(false);
         });
         LOGGER.info("CineWolf AutoDirector {} initialized for Minecraft 26.2 and Flashback {}",
                 CineWolfAutoDirector.VERSION, FlashbackCompatibility.SUPPORTED_VERSION);
@@ -112,10 +119,16 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
     public static void renderPanel() {
         if (panel != null) panel.render();
         if (verticalSafeAreaOverlay != null) verticalSafeAreaOverlay.render();
+        if (brandWatermark != null) brandWatermark.renderEditorOverlay();
     }
 
     public static void setPreviewVisible(boolean visible) {
         if (previewRenderer != null) previewRenderer.setVisible(visible);
+    }
+
+    /** TV-style brand bug for AutoDirector montage previews / exports. */
+    public static void setExportWatermarkActive(boolean active) {
+        if (brandWatermark != null) brandWatermark.setActive(active);
     }
 
     private static void showCompatibilityMessage(Minecraft client, String message) {

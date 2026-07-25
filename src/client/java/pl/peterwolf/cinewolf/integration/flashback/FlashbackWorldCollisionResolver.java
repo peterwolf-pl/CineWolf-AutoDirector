@@ -368,6 +368,17 @@ public final class FlashbackWorldCollisionResolver implements CollisionResolver 
                 : OptionalDouble.empty();
         OptionalDouble maxY = CeilingClearanceClamp.maxCameraY(subjectCeiling, clearance);
         if (maxY.isPresent() && camera.y() > maxY.getAsDouble() + 1.0e-4) return false;
+        return lineOfSightClear(level, camera, focus);
+    }
+
+    /**
+     * True when a block ray from the subject focus to the camera does not hit solid geometry
+     * (i.e. the camera can see the target without occluding blocks).
+     */
+    public static boolean lineOfSightClear(ClientLevel level, Vec3d camera, Vec3d focus) {
+        if (level == null || camera == null || focus == null || !camera.isFinite() || !focus.isFinite()) {
+            return false;
+        }
         HitResult hit = level.clip(new ClipContext(vector(focus), vector(camera), ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()));
         return hit.getType() == HitResult.Type.MISS;
