@@ -30,9 +30,11 @@ public final class CineWolfBrandWatermark implements HudElement {
 
     /** ~55% opacity — readable but not distracting. */
     private static final float DEFAULT_ALPHA = 0.55f;
+    /** Base size as a fraction of frame width at scale 1.0. */
     private static final float MIN_SIZE_FRAC = 1f / 18f;
-    private static final int MIN_SIZE_PX = 28;
-    private static final int MAX_SIZE_PX = 72;
+    private static final int MIN_SIZE_PX = 16;
+    private static final int MAX_SIZE_PX = 160;
+    private static final float DEFAULT_SCALE = 1.0f;
 
     private final CineWolfConfig config;
     private volatile boolean active;
@@ -66,7 +68,7 @@ public final class CineWolfBrandWatermark implements HudElement {
         Minecraft client = Minecraft.getInstance();
         int screenW = client.getWindow().getGuiScaledWidth();
         int screenH = client.getWindow().getGuiScaledHeight();
-        int size = clampSize(Math.round(screenW * MIN_SIZE_FRAC));
+        int size = resolveSizePx(screenW, screenH);
         int margin = Math.max(6, Math.round(screenW * 0.012f));
         int x = screenW - size - margin;
         int y = margin;
@@ -92,7 +94,7 @@ public final class CineWolfBrandWatermark implements HudElement {
         float frameY = ReplayUI.frameY;
         float frameW = ReplayUI.frameWidth;
         float frameH = ReplayUI.frameHeight;
-        float size = clampSize(frameW * MIN_SIZE_FRAC);
+        float size = resolveSize(frameW, frameH);
         float margin = Math.max(6f, frameW * 0.012f);
         float x0 = frameX + frameW - size - margin;
         float y0 = frameY + margin;
@@ -121,8 +123,25 @@ public final class CineWolfBrandWatermark implements HudElement {
         return client != null && client.level != null && client.player != null;
     }
 
-    private static int clampSize(float size) {
-        return Math.max(MIN_SIZE_PX, Math.min(MAX_SIZE_PX, Math.round(size)));
+    private int resolveSizePx(float frameW, float frameH) {
+        return Math.round(resolveSize(frameW, frameH));
+    }
+
+    private float resolveSize(float frameW, float frameH) {
+        float scale = watermarkScale();
+        float size = frameW * MIN_SIZE_FRAC * scale;
+        // Cap by shorter frame edge so tall 9:16 exports keep a readable bug.
+        float maxByFrame = Math.min(frameW, frameH) * 0.28f;
+        float maxSize = Math.min(MAX_SIZE_PX, maxByFrame);
+        float minSize = Math.min(MIN_SIZE_PX * Math.max(0.5f, scale), maxSize);
+        return Math.max(minSize, Math.min(maxSize, size));
+    }
+
+    private float watermarkScale() {
+        if (config == null || config.montage == null) return DEFAULT_SCALE;
+        double scale = config.montage.exportWatermarkScale;
+        if (!Double.isFinite(scale)) return DEFAULT_SCALE;
+        return (float) Math.max(0.4, Math.min(2.5, scale));
     }
 
     private static float clampAlpha(double alpha) {

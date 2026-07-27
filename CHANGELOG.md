@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.23 - 2026-07-27
+
+- Added watermark size control for the top-right TV logo (scale 0.4–2.5, default 1.0)
+- Size applies to montage editor preview and Flashback export frames
+
 ## 2.0.22 - 2026-07-27
 
 - Fixed Flashback exports ending at a discontinuous source cut and omitting every later montage shot
