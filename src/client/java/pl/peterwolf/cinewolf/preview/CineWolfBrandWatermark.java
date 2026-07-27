@@ -33,7 +33,7 @@ public final class CineWolfBrandWatermark implements HudElement {
     /** Base size as a fraction of frame width at scale 1.0. */
     private static final float MIN_SIZE_FRAC = 1f / 18f;
     private static final int MIN_SIZE_PX = 16;
-    private static final int MAX_SIZE_PX = 160;
+    private static final int MAX_SIZE_PX = 480;
     private static final float DEFAULT_SCALE = 1.0f;
 
     private final CineWolfConfig config;
@@ -131,7 +131,8 @@ public final class CineWolfBrandWatermark implements HudElement {
         float scale = watermarkScale();
         float size = frameW * MIN_SIZE_FRAC * scale;
         // Cap by shorter frame edge so tall 9:16 exports keep a readable bug.
-        float maxByFrame = Math.min(frameW, frameH) * 0.28f;
+        // At scale 7.5 (~7.5/18 ≈ 42% of width) allow up to ~half the short edge.
+        float maxByFrame = Math.min(frameW, frameH) * 0.55f;
         float maxSize = Math.min(MAX_SIZE_PX, maxByFrame);
         float minSize = Math.min(MIN_SIZE_PX * Math.max(0.5f, scale), maxSize);
         return Math.max(minSize, Math.min(maxSize, size));
@@ -141,7 +142,7 @@ public final class CineWolfBrandWatermark implements HudElement {
         if (config == null || config.montage == null) return DEFAULT_SCALE;
         double scale = config.montage.exportWatermarkScale;
         if (!Double.isFinite(scale)) return DEFAULT_SCALE;
-        return (float) Math.max(0.4, Math.min(2.5, scale));
+        return (float) Math.max(0.4, Math.min(7.5, scale));
     }
 
     private static float clampAlpha(double alpha) {

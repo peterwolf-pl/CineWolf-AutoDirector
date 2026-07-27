@@ -37,7 +37,7 @@ public final class MontageConfig {
     public double exportWatermarkOpacity = 0.55;
     /**
      * Relative size of the top-right TV-style logo bug.
-     * {@code 1.0} = default (~1/18 of frame width); range {@code [0.4, 2.5]}.
+     * {@code 1.0} = default (~1/18 of frame width); range {@code [0.4, 7.5]}.
      */
     public double exportWatermarkScale = 1.0;
     public double cameraMovementIntensity = 0.65;
@@ -134,7 +134,7 @@ public final class MontageConfig {
         eventSensitivity = clamp(eventSensitivity, 0.6, 0.0, 1.0);
         thirdPersonHeight = clamp(thirdPersonHeight, 0.0, -2.25, 2.25);
         exportWatermarkOpacity = clamp(exportWatermarkOpacity, 0.55, 0.15, 0.95);
-        exportWatermarkScale = clamp(exportWatermarkScale, 1.0, 0.4, 2.5);
+        exportWatermarkScale = clamp(exportWatermarkScale, 1.0, 0.4, 7.5);
         coarseSamplesPerSecond = Math.max(2, Math.min(5, coarseSamplesPerSecond));
         detailedSamplesPerSecond = Math.max(4, Math.min(20, detailedSamplesPerSecond));
         maximumDetailedSamples = Math.max(0, Math.min(4_000, maximumDetailedSamples));

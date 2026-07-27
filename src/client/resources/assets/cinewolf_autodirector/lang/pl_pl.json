@@ -160,7 +160,7 @@
   "cinewolf.montage.field.export_watermark_opacity": "Przezroczystość znaku wodnego",
   "cinewolf.montage.tooltip.export_watermark_opacity": "Widoczność ikony w prawym górnym rogu (0.15 = bardzo delikatna, 0.95 = prawie solidna).",
   "cinewolf.montage.field.export_watermark_scale": "Wielkość znaku wodnego",
-  "cinewolf.montage.tooltip.export_watermark_scale": "Względna wielkość logo TV w prawym górnym rogu (0.4 = małe, 1.0 = domyślne, 2.5 = duże).",
+  "cinewolf.montage.tooltip.export_watermark_scale": "Względna wielkość logo TV w prawym górnym rogu (0.4 = małe, 1.0 = domyślne, 7.5 = bardzo duże).",
   "cinewolf.montage.field.collision": "Unikanie kolizji",
   "cinewolf.montage.field.coarse_rate": "Próbki zgrubne / sekundę",
   "cinewolf.montage.field.detailed_rate": "Próbki dokładne / sekundę",

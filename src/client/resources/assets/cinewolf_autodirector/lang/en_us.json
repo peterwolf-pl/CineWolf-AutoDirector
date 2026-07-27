@@ -160,7 +160,7 @@
   "cinewolf.montage.field.export_watermark_opacity": "Watermark opacity",
   "cinewolf.montage.tooltip.export_watermark_opacity": "Transparency of the top-right brand icon (0.15 = very faint, 0.95 = nearly solid).",
   "cinewolf.montage.field.export_watermark_scale": "Watermark size",
-  "cinewolf.montage.tooltip.export_watermark_scale": "Relative size of the top-right TV logo (0.4 = small, 1.0 = default, 2.5 = large).",
+  "cinewolf.montage.tooltip.export_watermark_scale": "Relative size of the top-right TV logo (0.4 = small, 1.0 = default, 7.5 = very large).",
   "cinewolf.montage.field.collision": "Collision Avoidance",
   "cinewolf.montage.field.coarse_rate": "Coarse Samples / Second",
   "cinewolf.montage.field.detailed_rate": "Detailed Samples / Second",

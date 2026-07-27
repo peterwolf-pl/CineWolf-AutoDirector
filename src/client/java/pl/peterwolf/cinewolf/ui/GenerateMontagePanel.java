@@ -479,7 +479,7 @@ public final class GenerateMontagePanel {
                     tr("cinewolf.montage.tooltip.export_watermark_opacity"),
                     value -> settings.exportWatermarkOpacity = value);
             changed |= number(tr("cinewolf.montage.field.export_watermark_scale"),
-                    settings.exportWatermarkScale, 0.05, 0.4, 2.5,
+                    settings.exportWatermarkScale, 0.05, 0.4, 7.5,
                     tr("cinewolf.montage.tooltip.export_watermark_scale"),
                     value -> settings.exportWatermarkScale = value);
         }
