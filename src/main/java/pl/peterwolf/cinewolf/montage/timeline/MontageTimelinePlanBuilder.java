@@ -18,6 +18,13 @@ public final class MontageTimelinePlanBuilder {
     private static final double TIME_EPSILON = 1.0e-6;
     private static final double SPEED_EPSILON = 1.0e-5;
     private static final double FOV_SIMPLIFICATION_EPSILON = 0.05;
+    /*
+     * Flashback advances source time once per exported frame. A one-tick bridge can therefore
+     * advance past both the source gap and the complete following shot before the next frame is
+     * captured. One output second gives every integer export FPS an integral number of bridge
+     * frames, so the source cursor arrives at the next shot instead of overshooting export O.
+     */
+    private static final int SOURCE_CUT_BRIDGE_OUTPUT_TICKS = 20;
 
     public BuildResult build(MontageTimelineWriteRequest request) {
         if (request == null) {
@@ -127,10 +134,13 @@ public final class MontageTimelinePlanBuilder {
                 .toList();
         if (!mappings.equals(request.timeMappings())) errors.add("montage.timeline.mappings_not_ordered");
         MontageTimeMapping previousMapping = null;
+        int previousWrittenOutputEnd = -1;
+        long sourceCutOutputOffset = 0L;
         for (MontageTimeMapping mapping : mappings) {
             if (Math.abs(mapping.playbackSpeed() - mapping.derivedPlaybackSpeed()) > SPEED_EPSILON) {
                 errors.add("montage.timeline.mapping_speed_mismatch");
             }
+            boolean sourceCut = false;
             if (previousMapping == null) {
                 if (Math.abs(mapping.outputStartSeconds()) > TIME_EPSILON) {
                     errors.add("montage.timeline.mapping_must_start_at_zero");
@@ -145,12 +155,37 @@ public final class MontageTimelinePlanBuilder {
                 if (mapping.replayStartTime() < previousMapping.replayEndTime()) {
                     errors.add("montage.timeline.source_overlap");
                 } else if (mapping.replayStartTime() > previousMapping.replayEndTime()) {
-                    // Flashback cannot hard-cut source time in zero ticks; bridge with ≥1 output tick.
+                    sourceCut = true;
                     warnings.add("montage.timeline.source_cut_bridged");
                 }
             }
-            addTimelapsePoint(timelapse, mapping.replayStartTime(), mapping.outputStartSeconds(), errors);
-            addTimelapsePoint(timelapse, mapping.replayEndTime(), mapping.outputEndSeconds(), errors);
+
+            Integer rawStart = outputElapsedTick(mapping.outputStartSeconds(), errors);
+            Integer rawEnd = outputElapsedTick(mapping.outputEndSeconds(), errors);
+            if (rawStart == null || rawEnd == null) {
+                previousMapping = mapping;
+                continue;
+            }
+            long writtenStart = rawStart + sourceCutOutputOffset;
+            long writtenEnd = rawEnd + sourceCutOutputOffset;
+            if (sourceCut && previousWrittenOutputEnd >= 0) {
+                long minimumStart = (long) previousWrittenOutputEnd + SOURCE_CUT_BRIDGE_OUTPUT_TICKS;
+                if (writtenStart < minimumStart) {
+                    long addedOffset = minimumStart - writtenStart;
+                    sourceCutOutputOffset += addedOffset;
+                    writtenStart += addedOffset;
+                    writtenEnd += addedOffset;
+                }
+            }
+            if (writtenStart > Integer.MAX_VALUE || writtenEnd > Integer.MAX_VALUE) {
+                errors.add("montage.timeline.output_time_out_of_range");
+                previousMapping = mapping;
+                continue;
+            }
+
+            addTimelapsePoint(timelapse, mapping.replayStartTime(), (int) writtenStart, errors);
+            addTimelapsePoint(timelapse, mapping.replayEndTime(), (int) writtenEnd, errors);
+            previousWrittenOutputEnd = (int) writtenEnd;
             previousMapping = mapping;
         }
 
@@ -257,13 +292,11 @@ public final class MontageTimelinePlanBuilder {
     }
 
     private static void addTimelapsePoint(TreeMap<Integer, MontageTimelineWritePlan.TimelapsePoint> points,
-                                          long sourceReplayTick, double outputSeconds, List<String> errors) {
+                                          long sourceReplayTick, int outputElapsedTick, List<String> errors) {
         if (sourceReplayTick < 0 || sourceReplayTick > Integer.MAX_VALUE) {
             errors.add("montage.timeline.source_time_out_of_range");
             return;
         }
-        Integer outputElapsedTick = outputElapsedTick(outputSeconds, errors);
-        if (outputElapsedTick == null) return;
         int sourceTick = (int) sourceReplayTick;
         MontageTimelineWritePlan.TimelapsePoint existing = points.get(sourceTick);
         if (existing != null && existing.outputElapsedTick() != outputElapsedTick) {
@@ -275,8 +308,8 @@ public final class MontageTimelinePlanBuilder {
 
     /**
      * Flashback Timelapse requires strictly increasing output elapsed values as source ticks advance.
-     * Continuous mappings already satisfy this; multi-region source cuts may share the same output endpoint,
-     * so bump later points by the minimum number of ticks needed to restore a strict increase.
+     * Source cuts receive their export-safe bridge while mappings are written above. This final pass only
+     * protects against an integer-rounding collision in an otherwise continuous mapping.
      */
     private static void ensureStrictlyIncreasingOutput(
             TreeMap<Integer, MontageTimelineWritePlan.TimelapsePoint> timelapse,

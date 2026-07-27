@@ -672,7 +672,7 @@
   "cinewolf.montage.tooltip.remove_segment": "Usuwa ten region z listy multi-region montażu.",
   "cinewolf.montage.shot.seek_source": "Skocz do źródła",
   "cinewolf.montage.tooltip.shot_seek_source": "Wstrzymuje replay i skacze do początku interwału źródłowego tego ujęcia.",
-  "montage.timeline.source_cut_bridged": "Czas źródłowy przeskakuje między regionami; Timelapse został połączony co najmniej jednym tickiem wyjścia.",
+  "montage.timeline.source_cut_bridged": "Czas źródłowy przeskakuje między regionami; Timelapse dodał bezpieczny dla eksportu jednosekundowy most.",
   "montage.timeline.mapping_output_gap": "Mapowanie czasu wyjścia ma małą lukę między sąsiednimi ujęciami.",
   "montage.timeline.mapping_output_overlap": "Mapowania czasu wyjścia nachodzą na siebie.",
   "montage.timeline.source_overlap": "Mapowania czasu źródłowego nachodzą na siebie.",

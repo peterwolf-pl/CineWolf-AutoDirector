@@ -77,7 +77,7 @@ class MontageTimelinePlanBuilderTest {
     }
 
     @Test
-    void bridgesASourceCutBetweenAdjacentMappingsWithStrictlyIncreasingOutput() {
+    void bridgesASourceCutWithOneExportSecondSoFlashbackCannotSkipTheFollowingShot() {
         MontageTimelineWriteRequest request = new MontageTimelineWriteRequest(UUID.randomUUID(), 100,
                 List.of(new MontageGeneratedShot(0.0, path(0.0, 1.0, 10, 30, 0.0, 4.0)),
                         new MontageGeneratedShot(1.0, path(0.0, 1.0, 50, 70, 10.0, 14.0))),
@@ -91,12 +91,38 @@ class MontageTimelinePlanBuilderTest {
         MontageTimelineWritePlan plan = result.plan().orElseThrow();
         List<Integer> outputs = plan.timelapseKeyframes().stream()
                 .map(MontageTimelineWritePlan.TimelapsePoint::outputElapsedTick).toList();
-        for (int index = 1; index < outputs.size(); index++) {
-            assertTrue(outputs.get(index) > outputs.get(index - 1),
-                    "Timelapse output must strictly increase across source cuts: " + outputs);
-        }
+        assertEquals(List.of(0, 20, 40, 60), outputs);
         assertEquals(List.of(10, 30, 50, 70), plan.timelapseKeyframes().stream()
                 .map(MontageTimelineWritePlan.TimelapsePoint::timelineTick).toList());
+    }
+
+    @Test
+    void rendersTheCompleteFinalShotForTheReportedTwentyFourFpsExport() {
+        MontageTimelineWriteRequest request = new MontageTimelineWriteRequest(UUID.randomUUID(), 79,
+                List.of(
+                        new MontageGeneratedShot(0.0, path(0.0, 6.95, 140, 279, 0.0, 1.0)),
+                        new MontageGeneratedShot(6.95, path(0.0, 2.7, 279, 333, 1.0, 2.0)),
+                        new MontageGeneratedShot(9.65, path(0.0, 0.3, 333, 339, 2.0, 3.0)),
+                        new MontageGeneratedShot(9.95, path(0.0, 6.7, 339, 473, 3.0, 4.0)),
+                        new MontageGeneratedShot(16.65, path(0.0, 7.55, 724, 875, 4.0, 5.0))),
+                List.of(
+                        MontageTimeMapping.between(0.0, 6.95, 140, 279),
+                        MontageTimeMapping.between(6.95, 9.65, 279, 333),
+                        MontageTimeMapping.between(9.65, 9.95, 333, 339),
+                        MontageTimeMapping.between(9.95, 16.65, 339, 473),
+                        MontageTimeMapping.between(16.65, 24.2, 724, 875)),
+                400);
+
+        MontageTimelinePlanBuilder.BuildResult result = builder.build(request);
+
+        assertTrue(result.valid(), () -> "Unexpected errors: " + result.errors());
+        MontageTimelineWritePlan plan = result.plan().orElseThrow();
+        assertEquals(List.of(0, 139, 193, 199, 333, 353, 504),
+                plan.timelapseKeyframes().stream()
+                        .map(MontageTimelineWritePlan.TimelapsePoint::outputElapsedTick).toList());
+        ExportSimulation simulation = simulateFlashbackExport(plan.timelapseKeyframes(), 140, 875, 24, 724);
+        assertEquals(605, simulation.totalFrames());
+        assertEquals(181, simulation.framesAtOrAfterFinalShotStart());
     }
 
     @Test
@@ -130,5 +156,37 @@ class MontageTimelinePlanBuilderTest {
     private static CameraSample sample(double cinematicTime, long replayTime, double x, double fov) {
         return new CameraSample(cinematicTime, replayTime, new Vec3d(x, 4.0, 2.0), new Quaternionf(),
                 20.0 + x, -5.0, 0.0, fov, new Vec3d(0.0, 1.0, 0.0), false);
+    }
+
+    /**
+     * Mirrors Flashback 0.41.1 ExportJob source advancement: capture one frame, then advance the
+     * source cursor by the active Timelapse tickrate divided by export FPS.
+     */
+    private static ExportSimulation simulateFlashbackExport(
+            List<MontageTimelineWritePlan.TimelapsePoint> points,
+            int exportStart, int exportEnd, int framesPerSecond, int finalShotStart) {
+        double sourceTick = exportStart;
+        int totalFrames = 0;
+        int finalShotFrames = 0;
+        while (sourceTick <= exportEnd && totalFrames < 100_000) {
+            if (sourceTick >= finalShotStart) finalShotFrames++;
+            MontageTimelineWritePlan.TimelapsePoint left = points.getFirst();
+            MontageTimelineWritePlan.TimelapsePoint right = points.get(1);
+            for (int index = 0; index < points.size() - 1; index++) {
+                MontageTimelineWritePlan.TimelapsePoint candidateLeft = points.get(index);
+                MontageTimelineWritePlan.TimelapsePoint candidateRight = points.get(index + 1);
+                if (sourceTick < candidateRight.timelineTick() || index == points.size() - 2) {
+                    left = candidateLeft;
+                    right = candidateRight;
+                    break;
+                }
+            }
+            sourceTick += left.ticksPerSecondTo(right) / framesPerSecond;
+            totalFrames++;
+        }
+        return new ExportSimulation(totalFrames, finalShotFrames);
+    }
+
+    private record ExportSimulation(int totalFrames, int framesAtOrAfterFinalShotStart) {
     }
 }

@@ -1,0 +1,19 @@
+Wrzuc na serwer plik:
+  server.js
+
+Katalog docelowy (obok package.json i folderu build/):
+  domains/peterwolf.pl/public_html/cinewolf/server.js
+
+Jak wrzucic:
+1. File Manager -> public_html/cinewolf/
+2. Usun stary server.js
+3. Wgraj ten plik (binary) ALBO otworz edytor i wklej zawartosc 1:1
+4. Plik startowy aplikacji w panelu: server.js
+5. Restart aplikacji Node (nie "Uruchom skrypt build")
+
+Sukces w logu:
+  CineWolf ready (Passenger)
+  albo
+  CineWolf ready 0.0.0.0:PORT
+
+NIE uruchamiaj npm run build na serwerze.

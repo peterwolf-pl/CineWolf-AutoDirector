@@ -8,3 +8,4 @@ logs/
 *.log
 *.log.gz
 .DS_Store
+*.zip

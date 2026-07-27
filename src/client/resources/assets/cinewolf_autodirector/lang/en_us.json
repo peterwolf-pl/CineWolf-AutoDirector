@@ -672,7 +672,7 @@
   "cinewolf.montage.tooltip.remove_segment": "Removes this source region from the multi-region montage list.",
   "cinewolf.montage.shot.seek_source": "Seek source",
   "cinewolf.montage.tooltip.shot_seek_source": "Pauses the replay and jumps to the start of this shot's source interval.",
-  "montage.timeline.source_cut_bridged": "Source time jumps between regions; Timelapse was bridged with at least one output tick.",
+  "montage.timeline.source_cut_bridged": "Source time jumps between regions; Timelapse added an export-safe one-second bridge.",
   "montage.timeline.mapping_output_gap": "Output time mapping has a small gap between adjacent shots.",
   "montage.timeline.mapping_output_overlap": "Output time mappings overlap.",
   "montage.timeline.source_overlap": "Source time mappings overlap.",

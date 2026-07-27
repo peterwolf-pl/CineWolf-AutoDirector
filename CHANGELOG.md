@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.22 - 2026-07-27
+
+- Fixed Flashback exports ending at a discontinuous source cut and omitting every later montage shot
+- Source-time cuts now use a one-second Timelapse bridge, preventing frame-by-frame export stepping from overshooting the I–O end
+- Added a 24 FPS regression reproducing the reported `140–875` export: all 181 frames of the final shot are now reached
+
+## 2.0.21 - 2026-07-27
+
+- Fixed a render-thread deadlock when finalizing a generated montage in Flashback 0.41.1
+- The montage writer now updates Flashback's export range through the already write-locked scene instead of trying to acquire the same non-reentrant lock twice
+- Synchronized the version shown in CineWolf startup logs with the packaged mod version
+
 ## 2.0.20 - 2026-07-26
 
 - Updated top-right video logo/watermark to use transparent background (`icon_trans.png`)

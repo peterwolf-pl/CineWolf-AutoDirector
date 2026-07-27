@@ -131,7 +131,8 @@ public final class FlashbackMontageTimelineWriter {
                 GeneratedTracks generated = generatedTracks(scene);
                 applyGeneratedMetadata(generated, plan.montageId());
                 verifyGeneratedPayload(generated, payload);
-                applyExportRange(state, plan.sourceInterval(), replayServer.getTotalReplayTicks());
+                applyExportRangeUnderWriteLock(state, scene, plan.sourceInterval(),
+                        replayServer.getTotalReplayTicks());
                 state.markDirty();
                 int modCountAfterWrite = state.modCount;
                 lastOperation = new OperationGuard(state, state.getSceneIndex(), plan.montageId(),
@@ -214,13 +215,19 @@ public final class FlashbackMontageTimelineWriter {
      * Point Flashback export I/O at the full native source interval occupied by the montage so
      * Start Export covers every written Camera/FOV/Timelapse key instead of a partial selection.
      */
-    private static void applyExportRange(EditorState state, MontageTimelineInterval interval, int totalReplayTicks) {
-        if (state == null || interval == null) return;
+    private static void applyExportRangeUnderWriteLock(EditorState state, EditorScene scene,
+                                                       MontageTimelineInterval interval, int totalReplayTicks) {
+        if (state == null || scene == null || interval == null) return;
         int total = Math.max(0, totalReplayTicks);
         int start = Math.max(0, Math.min(interval.startTick(), total));
         int end = Math.max(start, Math.min(interval.endTick(), total));
         if (end <= start && total > start) end = Math.min(total, start + 1);
-        state.setExportTicks(start, end, total);
+        /*
+         * write(...) already owns EditorState's StampedLock write stamp. EditorState.setExportTicks(...)
+         * tries to acquire that same non-reentrant write lock and therefore deadlocks the render thread.
+         * Mutate the current scene directly while the outer write stamp is held.
+         */
+        scene.setExportTicks(start, end, total);
         // Keep the timeline zoom framed on the written montage when Flashback exposes zoom fields.
         if (total > 0) {
             double span = Math.max(1.0, end - start);

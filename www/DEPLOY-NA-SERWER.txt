@@ -1,0 +1,54 @@
+CineWolf site - gotowa paczka na shared hosting (Node + Passenger)
+
+PLIK: cinewolf-www-prebuilt.zip (~3.3 MB)
+
+CO WGRAĆ
+1. Rozpakuj ZIP do katalogu aplikacji Node, np.:
+   domains/peterwolf.pl/public_html/cinewolf/
+
+2. Po rozpakowaniu MUSI być:
+   cinewolf/build/BUILD_ID
+   cinewolf/server.js
+   cinewolf/next.config.js
+   cinewolf/package.json
+   cinewolf/public/
+   cinewolf/app.js
+
+3. Usuń stare pliki jeśli są:
+   next.config.mjs
+   next.config.ts
+   .next/
+
+4. W panelu Node.js:
+   - Wersja Node: 20.x
+   - Tryb: Production
+   - Katalog: .../public_html/cinewolf/
+   - URL: cinewolf.peterwolf.pl
+   - Plik startowy: server.js
+   - Environment variables: najlepiej PUSTE (albo tylko NEXT_PUBLIC_SITE_URL)
+   - NIE dodawaj zmiennych z pustą nazwą
+
+5. NPM Install (w panelu) albo:
+   npm ci --omit=dev
+
+6. NIE uruchamiaj "build" w panelu.
+   Start / Restart aplikacji (nie jednorazowy "Uruchom skrypt").
+
+7. Log sukcesu:
+   CineWolf ready (Passenger)
+   albo
+   CineWolf ready 0.0.0.0:PORT
+
+WAŻNE O server.js
+Jeśli upload psuje pliki, wklej server.js ręcznie w File Managerze
+(treść jest w ZIP i w repozytorium www/server.js).
+
+ZAWARTOŚĆ TEJ PACZKI
+- build/     gotowy Next production build (distDir=build)
+- public/    assety (logo, banner)
+- server.js  start + Passenger
+- app.js     kopia server.js
+- next.config.js
+- package.json + package-lock.json
+
+Modrinth: https://modrinth.com/mod/cinewolf-autodirector
