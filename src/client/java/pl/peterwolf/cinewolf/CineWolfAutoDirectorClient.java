@@ -15,6 +15,7 @@ import pl.peterwolf.cinewolf.config.CineWolfConfigManager;
 import pl.peterwolf.cinewolf.input.CineWolfKeybinds;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackCompatibility;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
+import pl.peterwolf.cinewolf.integration.flashback.TimelapseExportController;
 import pl.peterwolf.cinewolf.montage.MontageHighlightController;
 import pl.peterwolf.cinewolf.montage.highlight.MontageHighlightStore;
 import pl.peterwolf.cinewolf.preview.CameraPathPreviewRenderer;
@@ -45,6 +46,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
     public void onInitializeClient() {
         CineWolfConfigManager configManager = new CineWolfConfigManager(LOGGER);
         configManager.load();
+        TimelapseExportController.bindConfig(configManager.get());
 
         // Integration registration and config remain available without Flashback.
         CineWolfAutoDirectorMod.integrations();

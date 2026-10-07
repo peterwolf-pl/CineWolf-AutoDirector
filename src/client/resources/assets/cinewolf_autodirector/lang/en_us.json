@@ -1,5 +1,12 @@
 {
   "cinewolf.panel.title": "CineWolf AutoDirector",
+  "cinewolf.tab.timelapse": "Timelapse",
+  "cinewolf.timelapse.description": "Speed up replay time during Flashback export without lowering the output frame rate.",
+  "cinewolf.timelapse.speed": "Speed multiplier",
+  "cinewolf.timelapse.speed_tooltip": "x10 advances replay time 10 times faster per output frame. x1 disables timelapse.",
+  "cinewolf.timelapse.status.normal": "Timelapse disabled - normal x1 export.",
+  "cinewolf.timelapse.status.active": "Active: x%s. Flashback renders about %s%% of the normal frame count.",
+  "cinewolf.timelapse.sampling": "The encoder keeps Flashback's selected FPS. CineWolf samples replay time x%s faster, so unnecessary intermediate frames are not rendered.",
   "cinewolf.field.target": "Target",
   "cinewolf.field.shot_type": "Shot Type",
   "cinewolf.field.diameter": "Diameter",

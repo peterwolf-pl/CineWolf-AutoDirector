@@ -6,7 +6,7 @@ import pl.peterwolf.cinewolf.model.SamplingSettings;
 import pl.peterwolf.cinewolf.model.ShotType;
 
 public final class CineWolfConfig {
-    public static final int CURRENT_VERSION = 6;
+    public static final int CURRENT_VERSION = 7;
 
     public int version = CURRENT_VERSION;
     public boolean previewVisible = true;
@@ -41,6 +41,7 @@ public final class CineWolfConfig {
     public KeyframeIntervalUnit cameraKeyframeIntervalUnit = KeyframeIntervalUnit.SECONDS;
     public double cameraKeyframeInterval = 1.0;
     public PathSmoothingConfig pathSmoothing = new PathSmoothingConfig();
+    public TimelapseConfig timelapse = new TimelapseConfig();
     public MontageConfig montage = new MontageConfig();
 
     public void normalize() {
@@ -72,6 +73,8 @@ public final class CineWolfConfig {
         maximumKeyframeIntervalSeconds = positiveOr(maximumKeyframeIntervalSeconds, 8.0);
         if (pathSmoothing == null) pathSmoothing = new PathSmoothingConfig();
         pathSmoothing.normalize();
+        if (timelapse == null) timelapse = new TimelapseConfig();
+        timelapse.normalize();
         if (montage == null) montage = new MontageConfig();
         montage.normalize();
     }
