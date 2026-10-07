@@ -83,10 +83,42 @@ public final class AutoDirectorPanel {
                     montagePanel.render(target, entities);
                     ImGui.endTabItem();
                 }
+                if (ImGui.beginTabItem(tr("cinewolf.tab.timelapse"))) {
+                    renderTimelapseSettings();
+                    ImGui.endTabItem();
+                }
                 ImGui.endTabBar();
             }
         }
         ImGui.end();
+    }
+
+    private void renderTimelapseSettings() {
+        config.timelapse.normalize();
+
+        ImGui.textWrapped(tr("cinewolf.timelapse.description"));
+        ImGui.separator();
+
+        boolean changed = number(
+                tr("cinewolf.timelapse.speed"),
+                config.timelapse.speedMultiplier,
+                1.0, 1.0, 1000.0,
+                tr("cinewolf.timelapse.speed_tooltip"),
+                value -> config.timelapse.speedMultiplier = value
+        );
+        if (changed) {
+            config.timelapse.normalize();
+            markChanged();
+        }
+
+        double multiplier = config.timelapse.speedMultiplier;
+        if (multiplier <= 1.000001) {
+            ImGui.textDisabled(tr("cinewolf.timelapse.status.normal"));
+        } else {
+            ImGui.text(tr("cinewolf.timelapse.status.active",
+                    format(multiplier), format(100.0 / multiplier)));
+            ImGui.textWrapped(tr("cinewolf.timelapse.sampling", format(multiplier)));
+        }
     }
 
     private void renderStatusHeader() {
