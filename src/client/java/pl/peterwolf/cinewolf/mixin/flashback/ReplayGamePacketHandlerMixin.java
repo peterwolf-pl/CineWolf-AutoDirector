@@ -50,8 +50,9 @@ public abstract class ReplayGamePacketHandlerMixin {
     @Inject(method = "handleAnimate", at = @At("HEAD"), remap = false)
     private void cinewolf$captureAnimation(ClientboundAnimatePacket packet, CallbackInfo callbackInfo) {
         if (!cinewolf$canCapture()) return;
-        if (packet.getAction() != ClientboundAnimatePacket.SWING_MAIN_HAND
-                && packet.getAction() != ClientboundAnimatePacket.SWING_OFF_HAND) return;
+        int action = packet.getAction();
+        if (action != ClientboundAnimatePacket.CRITICAL_HIT
+                && action != ClientboundAnimatePacket.MAGIC_CRITICAL_HIT) return;
         Entity attacker = cinewolf$entity(packet.getId());
         if (attacker == null) return;
         ReplayActionCapture.record(new ObservedReplayAction.CombatSignal(cinewolf$tick(),
@@ -88,12 +89,19 @@ public abstract class ReplayGamePacketHandlerMixin {
 
     @Inject(method = "handleEntityEvent", at = @At("HEAD"), remap = false)
     private void cinewolf$captureDeath(ClientboundEntityEventPacket packet, CallbackInfo callbackInfo) {
-        if (!cinewolf$canCapture() || packet.getEventId() != EntityEvent.DEATH) return;
-        Entity victim = packet.getEntity(level());
-        if (victim == null) return;
-        ReplayActionCapture.record(new ObservedReplayAction.CombatSignal(cinewolf$tick(),
-                ObservedReplayAction.CombatSignalType.DEATH, Optional.empty(), Optional.of(cinewolf$reference(victim)),
-                cinewolf$position(victim.position()), 1.0));
+        if (!cinewolf$canCapture()) return;
+        Entity actor = packet.getEntity(level());
+        if (actor == null) return;
+        byte eventId = packet.getEventId();
+        if (eventId == EntityEvent.DEATH) {
+            ReplayActionCapture.record(new ObservedReplayAction.CombatSignal(cinewolf$tick(),
+                    ObservedReplayAction.CombatSignalType.DEATH, Optional.empty(), Optional.of(cinewolf$reference(actor)),
+                    cinewolf$position(actor.position()), 1.0));
+        } else if (eventId == EntityEvent.START_ATTACKING) {
+            ReplayActionCapture.record(new ObservedReplayAction.CombatSignal(cinewolf$tick(),
+                    ObservedReplayAction.CombatSignalType.ATTACK, Optional.of(cinewolf$reference(actor)),
+                    Optional.empty(), cinewolf$position(actor.position()), 0.2));
+        }
     }
 
     @Inject(method = "handleBlockDestruction", at = @At("HEAD"), remap = false)
@@ -115,15 +123,28 @@ public abstract class ReplayGamePacketHandlerMixin {
     private void cinewolf$captureBlockUpdate(ClientboundBlockUpdatePacket packet, CallbackInfo callbackInfo) {
         if (!cinewolf$canCapture()) return;
         ServerLevel level = level();
-        if (level != null) cinewolf$recordBlockChange(packet.getPos(), level.getBlockState(packet.getPos()), packet.getBlockState());
+        if (level != null) cinewolf$recordBlockChange(packet.getPos(), level.getBlockState(packet.getPos()),
+                packet.getBlockState(), 1);
     }
 
     @Inject(method = "handleChunkBlocksUpdate", at = @At("HEAD"), remap = false)
     private void cinewolf$captureSectionUpdate(ClientboundSectionBlocksUpdatePacket packet, CallbackInfo callbackInfo) {
         if (!cinewolf$canCapture()) return;
         ServerLevel level = level();
-        if (level != null) packet.runUpdates((position, state) -> cinewolf$recordBlockChange(position,
-                level.getBlockState(position), state));
+        if (level == null) return;
+        // Large multi-block packets are almost always chunk/section reconstruction during seeks,
+        // not intentional building. Real builds arrive as single block updates or tiny batches.
+        java.util.ArrayList<net.minecraft.core.BlockPos> positions = new java.util.ArrayList<>();
+        java.util.ArrayList<BlockState> states = new java.util.ArrayList<>();
+        packet.runUpdates((position, state) -> {
+            positions.add(position.immutable());
+            states.add(state);
+        });
+        if (positions.size() > MAX_SECTION_BLOCK_CHANGES) return;
+        for (int index = 0; index < positions.size(); index++) {
+            BlockPos position = positions.get(index);
+            cinewolf$recordBlockChange(position, level.getBlockState(position), states.get(index), positions.size());
+        }
     }
 
     @Inject(method = "handleAddEntity", at = @At("TAIL"), remap = false)
@@ -140,7 +161,7 @@ public abstract class ReplayGamePacketHandlerMixin {
     @Inject(method = "handleRemoveEntities", at = @At("HEAD"), remap = false)
     private void cinewolf$captureProjectileRemoval(ClientboundRemoveEntitiesPacket packet, CallbackInfo callbackInfo) {
         if (!cinewolf$canCapture()) return;
-        packet.getEntityIds().forEach((int id) -> {
+        packet.entityIds().forEach((int id) -> {
             Entity entity = cinewolf$entity(id);
             if (entity instanceof Projectile projectile) {
                 ReplayActionCapture.record(new ObservedReplayAction.ProjectileSignal(cinewolf$tick(), projectile.getUUID(),
@@ -150,9 +171,20 @@ public abstract class ReplayGamePacketHandlerMixin {
         });
     }
 
+    /** Max multi-block changes accepted from one section packet (above this = reconstruction). */
+    @Unique private static final int MAX_SECTION_BLOCK_CHANGES = 4;
+    /** Player must be this close for actorless air↔block to count as intentional building. */
+    @Unique private static final double BLOCK_ACTOR_RADIUS = 8.0;
+
     @Unique
-    private void cinewolf$recordBlockChange(BlockPos position, BlockState oldState, BlockState newState) {
+    private void cinewolf$recordBlockChange(BlockPos position, BlockState oldState, BlockState newState,
+                                              int batchSize) {
         if (oldState == newState || oldState.equals(newState)) return;
+        // Only pure solidify / clear transitions. Fluid levels, door swings, crop ages, etc. are noise.
+        boolean destroyed = !oldState.isAir() && newState.isAir();
+        boolean placed = oldState.isAir() && !newState.isAir();
+        if (!destroyed && !placed) return;
+
         int tick = cinewolf$tick();
         BreakerKey key = cinewolf$breakerKey(position);
         if (key == null) return;
@@ -160,20 +192,53 @@ public abstract class ReplayGamePacketHandlerMixin {
         Optional<TargetReference> actor = breaker != null && tick - breaker.tick <= 8
                 ? Optional.of(breaker.actor) : Optional.empty();
         Vec3d location = new Vec3d(position.getX() + 0.5, position.getY() + 0.5, position.getZ() + 0.5);
-        if (!oldState.isAir() && newState.isAir()) {
+        if (actor.isEmpty()) {
+            actor = cinewolf$nearestPlayerActor(location, BLOCK_ACTOR_RADIUS);
+        }
+        // Actorless ambient world updates (chunk fill, leaf decay, plant growth, water source
+        // formation during seek) must not become montage "Block Placement" highlights.
+        if (actor.isEmpty()) return;
+        // Multi-block batches without a breaker are almost never real player builds.
+        if (batchSize > 1 && breaker == null) return;
+
+        if (destroyed) {
             ReplayActionCapture.record(new ObservedReplayAction.BlockDestroyed(tick, actor, location,
                     BuiltInRegistries.BLOCK.getKey(oldState.getBlock()).toString()));
-        } else if (oldState.isAir() && !newState.isAir()) {
-            ReplayActionCapture.record(new ObservedReplayAction.BlockPlaced(tick, Optional.empty(), location,
+        } else {
+            ReplayActionCapture.record(new ObservedReplayAction.BlockPlaced(tick, actor, location,
                     BuiltInRegistries.BLOCK.getKey(newState.getBlock()).toString()));
         }
         cinewolf$recentBreakers.entrySet().removeIf(entry -> tick - entry.getValue().tick > 8);
     }
 
     @Unique
+    private Optional<TargetReference> cinewolf$nearestPlayerActor(Vec3d location, double radius) {
+        ServerLevel level = level();
+        if (level == null || location == null) return Optional.empty();
+        double radiusSq = radius * radius;
+        TargetReference best = null;
+        double bestDistance = Double.POSITIVE_INFINITY;
+        for (Entity entity : level.players()) {
+            if (entity == null) continue;
+            double dx = entity.getX() - location.x();
+            double dy = entity.getY() - location.y();
+            double dz = entity.getZ() - location.z();
+            double distanceSq = dx * dx + dy * dy + dz * dz;
+            if (distanceSq > radiusSq || distanceSq >= bestDistance) continue;
+            bestDistance = distanceSq;
+            best = cinewolf$reference(entity);
+        }
+        return Optional.ofNullable(best);
+    }
+
+    @Unique
     private boolean cinewolf$canCapture() {
         java.util.OptionalLong generation = ReplayActionCapture.currentGeneration();
-        if (generation.isEmpty() || replayServer.isProcessingSnapshot) return false;
+        // Skip snapshot reconstruction AND fast-forward seeks: both stream bulk block state that is
+        // not intentional player building (doc: EVENT_DETECTION.md "Block activity").
+        if (generation.isEmpty() || replayServer.isProcessingSnapshot || replayServer.fastForwarding) {
+            return false;
+        }
         if (generation.getAsLong() != cinewolf$captureGeneration) {
             cinewolf$captureGeneration = generation.getAsLong();
             cinewolf$recentBreakers.clear();

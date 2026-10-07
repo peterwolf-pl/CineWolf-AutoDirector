@@ -38,7 +38,7 @@ public record PresetLibraryEntry(
         categories = Set.copyOf(categories == null ? Set.of() : categories);
         tags = Set.copyOf(tags == null ? Set.of() : tags);
         requiredIntegrations = Set.copyOf(requiredIntegrations == null ? Set.of() : requiredIntegrations);
-        minimumFlashbackVersion = Objects.requireNonNullElse(minimumFlashbackVersion, "0.41.1");
+        minimumFlashbackVersion = Objects.requireNonNullElse(minimumFlashbackVersion, "0.42.1");
         sourceBundleId = Objects.requireNonNullElse(sourceBundleId, "");
     }
 
@@ -68,7 +68,7 @@ public record PresetLibraryEntry(
                 categories,
                 Set.of("builtin"),
                 Set.of(),
-                "0.41.1",
+                "0.42.1",
                 "",
                 preset,
                 null

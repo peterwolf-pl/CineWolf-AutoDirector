@@ -37,4 +37,30 @@ class SampledTargetPoseResolverTest {
         assertTrue(resolver.resolve(TestFixtures.TARGET, 0L).orElseThrow().discontinuity());
         assertTrue(resolver.resolve(TestFixtures.TARGET, 1L).orElseThrow().discontinuity());
     }
+
+    @Test
+    void holdsSingleSampleOutsideExactTickInsteadOfMissingTarget() {
+        TargetPose only = TestFixtures.pose(new Vec3d(3, 64, -2), Vec3d.ZERO, 90);
+        SampledTargetPoseResolver resolver = new SampledTargetPoseResolver(Map.of(100L, only));
+
+        TargetPose held = resolver.resolve(TestFixtures.TARGET, 112L).orElseThrow();
+        assertEquals(3.0, held.position().x(), 1.0e-9);
+        assertEquals(64.0, held.position().y(), 1.0e-9);
+    }
+
+    @Test
+    void holdsEdgePoseBeforeFirstAndAfterLastSample() {
+        SampledTargetPoseResolver resolver = new SampledTargetPoseResolver(Map.of(
+                20L, TestFixtures.pose(new Vec3d(0, 1, 0), Vec3d.ZERO, 0),
+                40L, TestFixtures.pose(new Vec3d(10, 1, 0), Vec3d.ZERO, 0)));
+
+        assertEquals(0.0, resolver.resolve(TestFixtures.TARGET, 5L).orElseThrow().position().x(), 1.0e-9);
+        assertEquals(10.0, resolver.resolve(TestFixtures.TARGET, 55L).orElseThrow().position().x(), 1.0e-9);
+    }
+
+    @Test
+    void emptyPoseMapStillReturnsEmpty() {
+        SampledTargetPoseResolver resolver = new SampledTargetPoseResolver(Map.of());
+        assertTrue(resolver.resolve(TestFixtures.TARGET, 0L).isEmpty());
+    }
 }

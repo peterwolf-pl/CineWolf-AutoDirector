@@ -12,8 +12,13 @@ import java.util.Optional;
  * Unsupported versions never crash the game; risky integrations stay disabled.
  */
 public final class FlashbackCompatibilityRegistry {
-    public static final String SUPPORTED_VERSION = "0.41.1";
-    public static final VersionRange SUPPORTED_RANGE = VersionRange.exact(SUPPORTED_VERSION);
+    /** Recommended / compile-time Flashback pin. */
+    public static final String SUPPORTED_VERSION = "0.43.4";
+    /** Oldest Flashback build with full editor integration. */
+    public static final String MIN_SUPPORTED_VERSION = "0.42.1";
+    /** First major line that is not treated as a compatible 0.x editor. */
+    public static final String NEXT_UNSUPPORTED_MAJOR = "1.0.0";
+    public static final VersionRange SUPPORTED_RANGE = VersionRange.atLeast(MIN_SUPPORTED_VERSION);
 
     private static final List<String> BASELINE_METHODS = List.of(
             "public_flashback_classes",
@@ -24,6 +29,13 @@ public final class FlashbackCompatibilityRegistry {
     );
 
     private FlashbackCompatibilityRegistry() {
+    }
+
+    public static boolean isFullySupported(String version) {
+        if (version == null || version.isBlank()) return false;
+        String trimmed = version.trim();
+        return VersionRange.compare(trimmed, MIN_SUPPORTED_VERSION) >= 0
+                && VersionRange.compare(trimmed, NEXT_UNSUPPORTED_MAJOR) < 0;
     }
 
     public static CompatibilityAssessment assess(Optional<String> detectedVersion) {
@@ -42,8 +54,8 @@ public final class FlashbackCompatibilityRegistry {
         }
 
         String version = detectedVersion.get().trim();
-        if (SUPPORTED_VERSION.equals(version)) {
-            FlashbackCapabilities caps = FlashbackCapabilities.flashback0411();
+        if (isFullySupported(version)) {
+            FlashbackCapabilities caps = FlashbackCapabilities.flashback0434();
             FlashbackCompatibilityRule rule = new FlashbackCompatibilityRule(
                     SUPPORTED_RANGE,
                     CompatibilityLevel.SUPPORTED,
@@ -55,10 +67,28 @@ public final class FlashbackCompatibilityRegistry {
             return new CompatibilityAssessment(version, rule, caps, CineWolfAutoDirector.VERSION, true);
         }
 
-        // Nearby 0.41.x builds are experimental until validated.
-        if (version.startsWith("0.41.")) {
-            FlashbackCapabilities caps = FlashbackCapabilities.flashback0411();
+        // 0.42.0 is adjacent to the supported floor but was never the validated pin.
+        if (version.startsWith("0.42.")) {
+            FlashbackCapabilities caps = FlashbackCapabilities.flashback0434();
             List<String> warnings = new ArrayList<>();
+            warnings.add("compatibility.flashback_unvalidated_patch");
+            warnings.add("compatibility.risky_mixins_disabled");
+            FlashbackCompatibilityRule rule = new FlashbackCompatibilityRule(
+                    SUPPORTED_RANGE,
+                    CompatibilityLevel.EXPERIMENTAL,
+                    caps.enabledFeatures(),
+                    caps.disabledFeatures(),
+                    warnings,
+                    List.of("public_flashback_classes", "cinewolf_owned_timeline_overlay")
+            );
+            return new CompatibilityAssessment(version, rule, caps, CineWolfAutoDirector.VERSION, false);
+        }
+
+        // Previous validated line (0.41.x) remains usable with experimental/off mixins policy.
+        if (version.startsWith("0.41.")) {
+            FlashbackCapabilities caps = FlashbackCapabilities.flashback0434();
+            List<String> warnings = new ArrayList<>();
+            warnings.add("compatibility.flashback_legacy_line");
             warnings.add("compatibility.flashback_unvalidated_patch");
             warnings.add("compatibility.risky_mixins_disabled");
             FlashbackCompatibilityRule rule = new FlashbackCompatibilityRule(
@@ -79,7 +109,7 @@ public final class FlashbackCompatibilityRegistry {
                 caps.enabledFeatures(),
                 caps.disabledFeatures(),
                 List.of("compatibility.flashback_unsupported",
-                        "compatibility.supported_exactly_" + SUPPORTED_VERSION),
+                        "compatibility.supported_range_" + MIN_SUPPORTED_VERSION),
                 List.of()
         );
         return new CompatibilityAssessment(version, rule, caps, CineWolfAutoDirector.VERSION, false);
@@ -101,7 +131,7 @@ public final class FlashbackCompatibilityRegistry {
                 return "Flashback is not installed; CineWolf editor integration is disabled";
             }
             return "Detected Flashback " + detectedVersion + "; CineWolf " + cineWolfVersion
-                    + " supports " + SUPPORTED_VERSION;
+                    + " supports Flashback " + MIN_SUPPORTED_VERSION + "+ (recommended " + SUPPORTED_VERSION + ")";
         }
     }
 }

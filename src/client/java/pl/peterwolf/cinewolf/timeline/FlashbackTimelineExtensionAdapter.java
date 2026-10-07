@@ -1,9 +1,9 @@
 package pl.peterwolf.cinewolf.timeline;
 
 /**
- * Investigation result for Flashback 0.41.1 native timeline extension.
+ * Investigation result for Flashback 0.43.4 native timeline extension.
  *
- * <p>Flashback 0.41.1 does not expose a stable public API for injecting custom event glyphs,
+ * <p>Flashback 0.43.4 does not expose a stable public API for injecting custom event glyphs,
  * colored markers, or third-party overlays into the native replay timeline. Reflection against
  * internal editor UI classes would be version-fragile and is intentionally not used.</p>
  *
@@ -29,6 +29,6 @@ public final class FlashbackTimelineExtensionAdapter {
     }
 
     public String investigationSummary() {
-        return "Flashback 0.41.1 has no stable timeline extension API; CineWolf uses a custom event overlay.";
+        return "Flashback 0.43.4 has no stable timeline extension API; CineWolf uses a custom event overlay.";
     }
 }

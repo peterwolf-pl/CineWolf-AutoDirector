@@ -110,6 +110,29 @@ class StateEventDetectorsTest {
     }
 
     @Test
+    void ignoresActorlessBlockPlacementNoiseFromChunkOrAmbientUpdates() {
+        // Fingerprint of the reported bug: analysis streams air→block packets with no actor during
+        // seeks / world reconstruction, and the montage becomes 100% false "Block Placement".
+        List<ObservedReplayAction> actions = List.of(
+                new ObservedReplayAction.BlockPlaced(10, Optional.empty(), new Vec3d(0, 64, 0), "minecraft:dirt"),
+                new ObservedReplayAction.BlockPlaced(20, Optional.empty(), new Vec3d(1, 64, 0), "minecraft:grass_block"),
+                new ObservedReplayAction.BlockPlaced(30, Optional.empty(), new Vec3d(2, 64, 0), "minecraft:stone"),
+                new ObservedReplayAction.BlockDestroyed(40, Optional.empty(), new Vec3d(3, 64, 0), "minecraft:oak_leaves"),
+                new ObservedReplayAction.BlockPlaced(50, Optional.of(PLAYER), new Vec3d(4, 64, 0), "minecraft:oak_planks"));
+        ReplaySample replaySample = AnalysisTestFixtures.sample(0, Map.of(PLAYER, snapshot(PLAYER, 0, 64, 0)),
+                List.of(), actions);
+
+        List<ReplayEvent> events = new BlockActivityEventDetector().detect(
+                new ReplaySampleWindow(List.of(replaySample), Map.of(), Set.of(PLAYER)),
+                ReplayAnalysisContext.defaults(List.of(replaySample)), 0.5);
+
+        assertEquals(1, events.stream().filter(event -> event.type() == ReplayEventType.BLOCK_PLACEMENT).count());
+        assertEquals(0, events.stream().filter(event -> event.type() == ReplayEventType.BLOCK_DESTRUCTION).count());
+        assertEquals(50, events.getFirst().peakReplayTime());
+        assertEquals(Set.of(PLAYER), events.getFirst().targets());
+    }
+
+    @Test
     void specializesTreeCuttingMiningAndFarmingFromBlockTypes() {
         List<ObservedReplayAction> actions = List.of(
                 new ObservedReplayAction.BlockDestroyed(0, Optional.of(PLAYER), new Vec3d(0, 64, 0), "minecraft:oak_log"),

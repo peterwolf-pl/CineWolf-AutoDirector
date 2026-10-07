@@ -18,10 +18,10 @@
     "cinewolf_autodirector.client.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.19.3",
-    "minecraft": "26.2",
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
     "java": ">=25",
-    "fabric-api": ">=0.153.0"
+    "fabric-api": "*"
   },
   "suggests": {
     "flashback": "${flashback_version}"

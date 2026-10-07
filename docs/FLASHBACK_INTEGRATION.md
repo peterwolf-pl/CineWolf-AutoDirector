@@ -2,10 +2,10 @@
 
 ## Supported baseline
 
-- Flashback: exactly 0.41.1
-- Source revision inspected: `a612feaeb95ca0a65df884e8aa6e6d6c409ed3c1`
-- Minecraft: 26.2
-- External development dependency: `maven.modrinth:4das1Fjq:cGezdWTX`
+- Flashback: 0.42.1+ (recommended 0.43.4)
+- Compile / development pin: Flashback 0.43.4 (`h6FH7iAC`)
+- Minecraft: 26.3
+- External development dependency: `maven.modrinth:4das1Fjq:h6FH7iAC`
 
 Flashback remains external and is never shaded or copied into the CineWolf artifact.
 
@@ -64,7 +64,7 @@ Event visualization uses CineWolf's own mini-timeline. Version 1.2.0 does not in
 
 `ReplayGamePacketHandlerMixin` captures bounded local replay actions for deterministic analysis. It does not alter packets or replay playback.
 
-The mixin config is `required: false`, `remap: false` at each Flashback-specific injection, and guarded by `FlashbackMixinPlugin`. Mixins are applied only when the detected Flashback version is exactly 0.41.1.
+The mixin config is `required: false`, `remap: false` at each Flashback-specific injection, and guarded by `FlashbackMixinPlugin`. Mixins are applied when the detected Flashback version is 0.42.1 or a newer 0.x build (recommended 0.43.4).
 
 ## Access and reflection
 

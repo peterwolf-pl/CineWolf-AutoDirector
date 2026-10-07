@@ -42,6 +42,29 @@ class CameraPathMotionLimiterTest {
         assertEquals(100.0, limited.getLast().position().x(), 1.0e-9);
     }
 
+    @Test
+    void rateLimitsFocusDistanceBreathing() {
+        Vec3d focus = new Vec3d(0, 2, 0);
+        CameraSample near = sample(0.0, focus.add(new Vec3d(0, 0, -4)), 0, focus);
+        CameraSample far = sample(0.1, focus.add(new Vec3d(0, 0, -14)), 0, focus); // 100 blocks/s radial
+        List<CameraSample> limited = limiter.limit(List.of(near, far), 50.0, 50.0, 160.0, 110.0, 3.5, 12.0);
+        double previous = near.position().distanceTo(focus);
+        double next = limited.getLast().position().distanceTo(focus);
+        assertTrue(Math.abs(next - previous) <= 3.5 * 0.1 + 1.0e-6,
+                "radial step=" + Math.abs(next - previous));
+        assertTrue(next < 14.0);
+    }
+
+    @Test
+    void rateLimitsFovBreathing() {
+        CameraSample a = new CameraSample(0.0, 0L, new Vec3d(0, 2, -6), new Quaternionf(), 0, 0, 0, 50,
+                new Vec3d(0, 2, 0), false);
+        CameraSample b = new CameraSample(0.1, 2L, new Vec3d(0, 2, -6), new Quaternionf(), 0, 0, 0, 90,
+                new Vec3d(0, 2, 0), false);
+        List<CameraSample> limited = limiter.limit(List.of(a, b), 30.0, 30.0, 160.0, 110.0, 3.5, 12.0);
+        assertTrue(Math.abs(limited.getLast().fov() - 50.0) <= 12.0 * 0.1 + 1.0e-6);
+    }
+
     private static CameraSample sample(double time, Vec3d position, double yaw) {
         return sample(time, position, yaw, position.add(new Vec3d(0, 0, 1)));
     }

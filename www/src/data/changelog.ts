@@ -17,6 +17,45 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "2.0.31",
+    date: "2026-09-18",
+    groups: [
+      {
+        category: "Compatibility",
+        items: [
+          "Port to Minecraft 26.3 (Wilderness Bound): Fabric Loader 0.19.5, Fabric API 0.160.7+26.3, Gradle 9.5.1.",
+          "Flashback compile pin remains 0.43.4 until a 26.3 Flashback build is published.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "2.0.30",
+    date: "2026-09-18",
+    groups: [
+      {
+        category: "Fixed",
+        items: [
+          "Generate Montage no longer fails analysis with “Shot source time must move forwards” when several events share the In or Out tick.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "2.0.29",
+    date: "2026-09-18",
+    groups: [
+      {
+        category: "Compatibility",
+        items: [
+          "Flashback 0.43.4 is the recommended editor pin; full integration now runs on Flashback 0.42.1 and newer 0.x builds.",
+          "Compile / Modrinth development dependency updated to Flashback 0.43.4.",
+          "Flashback 0.42.0 and 0.41.x remain experimental with mixins off; Flashback 1.0.0+ stays unsupported.",
+        ],
+      },
+    ],
+  },
+  {
     version: "2.0.1",
     date: "2026-07-25",
     groups: [

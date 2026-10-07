@@ -28,7 +28,7 @@ export const faq: FaqItem[] = [
   },
   {
     question: "Does it support Flashback?",
-    answer: `Yes. CineWolf ${compatibility.version} supports Flashback ${compatibility.flashbackVersion} exactly.`,
+    answer: `Yes. CineWolf ${compatibility.version} supports Flashback ${compatibility.flashbackVersion} (0.42.1 and newer 0.x; recommended 0.43.4).`,
   },
   {
     question: "Does it support ReplayMod?",

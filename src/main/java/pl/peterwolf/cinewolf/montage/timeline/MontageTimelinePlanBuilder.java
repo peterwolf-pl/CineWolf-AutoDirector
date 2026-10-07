@@ -17,7 +17,8 @@ public final class MontageTimelinePlanBuilder {
     private static final double TICKS_PER_SECOND = 20.0;
     private static final double TIME_EPSILON = 1.0e-6;
     private static final double SPEED_EPSILON = 1.0e-5;
-    private static final double FOV_SIMPLIFICATION_EPSILON = 0.05;
+    /** FOV keys follow the camera control points; 1° is below a visible ramp. */
+    private static final double FOV_SIMPLIFICATION_EPSILON = 1.0;
     /*
      * Flashback advances source time once per exported frame. A one-tick bridge can therefore
      * advance past both the source gap and the complete following shot before the next frame is
@@ -67,7 +68,10 @@ public final class MontageTimelinePlanBuilder {
             TreeMap<Integer, MontageTimelineWritePlan.FovPoint> shotFov = new TreeMap<>();
             double previousCinematicTime = Double.NEGATIVE_INFINITY;
             long previousReplayTime = -1L;
-            for (CameraSample sample : samples) {
+            for (int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++) {
+                CameraSample sample = samples.get(sampleIndex);
+                boolean holdAfter = sampleIndex + 1 < samples.size()
+                        && samples.get(sampleIndex + 1).discontinuity();
                 if (!sample.isFinite() || sample.cinematicTimeSeconds() < 0.0) {
                     errors.add("montage.timeline.camera_sample_invalid");
                     continue;
@@ -91,9 +95,10 @@ public final class MontageTimelinePlanBuilder {
                 int sourceTick = (int) sample.replayTime();
                 MontageTimelineWritePlan.CameraPoint previousCamera = shotCamera.put(sourceTick,
                         new MontageTimelineWritePlan.CameraPoint(sourceTick, sample.position(), sample.yaw(),
-                                sample.pitch(), sample.roll(), path.request().easing()));
+                                sample.pitch(), sample.roll(), path.request().easing(), holdAfter));
                 shotFov.put(sourceTick,
-                        new MontageTimelineWritePlan.FovPoint(sourceTick, sample.fov(), path.request().easing()));
+                        new MontageTimelineWritePlan.FovPoint(sourceTick, sample.fov(), path.request().easing(),
+                                holdAfter));
                 if (previousCamera != null) warnings.add("montage.timeline.camera_ticks_collapsed");
                 if (sample.discontinuity()) forcedFovTicks.add(sourceTick);
             }

@@ -12,16 +12,26 @@ public record VersionRange(String minimumInclusive, String maximumInclusive) {
         }
     }
 
+    public static final String UNBOUNDED = "*";
+
     public static VersionRange exact(String version) {
         return new VersionRange(version, version);
     }
 
+    /** Inclusive minimum with no upper bound (displayed as {@code min+}). */
+    public static VersionRange atLeast(String version) {
+        return new VersionRange(version, UNBOUNDED);
+    }
+
     public boolean contains(String version) {
         if (version == null || version.isBlank()) return false;
-        return compare(version, minimumInclusive) >= 0 && compare(version, maximumInclusive) <= 0;
+        if (compare(version, minimumInclusive) < 0) return false;
+        if (UNBOUNDED.equals(maximumInclusive)) return true;
+        return compare(version, maximumInclusive) <= 0;
     }
 
     public String display() {
+        if (UNBOUNDED.equals(maximumInclusive)) return minimumInclusive + "+";
         if (minimumInclusive.equals(maximumInclusive)) return minimumInclusive;
         return minimumInclusive + " .. " + maximumInclusive;
     }

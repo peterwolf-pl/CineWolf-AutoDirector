@@ -13,6 +13,7 @@ import pl.peterwolf.cinewolf.model.TargetKind;
 import pl.peterwolf.cinewolf.model.TargetPose;
 import pl.peterwolf.cinewolf.model.Vec3d;
 import pl.peterwolf.cinewolf.montage.preset.FramingType;
+import pl.peterwolf.cinewolf.vehicle.VehicleMotion;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -21,6 +22,8 @@ import java.util.Set;
 
 public final class ChaseShotGenerator extends AbstractShotGenerator implements ShotGenerator {
     private static final double HIGH_SPEED_BLOCKS_PER_SECOND = 8.0;
+    private static final double MAX_RADIUS_CHANGE_BLOCKS_PER_SECOND = 3.0;
+    private static final double RADIUS_LOCK_RESPONSIVENESS = 4.5;
 
     @Override
     public CameraPathPlan generate(ShotRequest request, ReplayContext context) {
@@ -50,17 +53,32 @@ public final class ChaseShotGenerator extends AbstractShotGenerator implements S
                     : cinematicTimeAtTick(request, replayTime) - cinematicTimeAtTick(request, replayTicks.get(i - 1));
             delta = Math.max(1.0e-4, delta);
             TargetPose target = requiredPose(request, context, replayTime);
-            Vec3d measured = new Vec3d(target.velocity().x(), 0.0, target.velocity().z());
-            double speed = measured.length();
+            boolean aerial = target.inVehicle() || VehicleMotion.isAircraftLike(request.target(), target);
+            Vec3d measured;
+            if (aerial) {
+                // Chase aircraft along the real 3D flight vector / body nose — not flattened ground yaw.
+                measured = VehicleMotion.resolveForward(request.target(), target);
+            } else {
+                measured = new Vec3d(target.velocity().x(), 0.0, target.velocity().z());
+                if (measured.lengthSquared() < 0.0025) {
+                    measured = CameraMath.horizontalDirectionFromYaw(target.yaw());
+                }
+            }
+            double speed = target.velocity().length();
+            if (!aerial) speed = Math.max(speed, measured.length());
             if (measured.lengthSquared() < 0.0025) {
-                measured = CameraMath.horizontalDirectionFromYaw(target.yaw());
+                measured = aerial
+                        ? CameraMath.directionFromYawPitch(target.yaw(), target.pitch())
+                        : CameraMath.horizontalDirectionFromYaw(target.yaw());
             }
             double directionResponse = speed > HIGH_SPEED_BLOCKS_PER_SECOND ? 2.2 : 3.2;
             double maxTurn = speed > HIGH_SPEED_BLOCKS_PER_SECOND ? 65.0 : 90.0;
+            if (aerial) maxTurn = Math.min(maxTurn, 55.0);
             direction = CameraSmoothing.smoothDirectionRateLimited(direction, measured.normalizeOr(direction),
                     directionResponse, delta, maxTurn);
 
-            Vec3d right = Vec3d.UP.cross(direction).normalizeOr(new Vec3d(1.0, 0.0, 0.0));
+            Vec3d up = aerial ? VehicleMotion.resolveUp(request.target(), target, direction) : Vec3d.UP;
+            Vec3d right = up.cross(direction).normalizeOr(new Vec3d(1.0, 0.0, 0.0));
             double turnRate = Math.min(0.75, Math.abs(speed - previousSpeed) * 0.1 + speed * 0.015);
             lateralLag = CameraSmoothing.exponential(lateralLag, right.multiply(turnRate * 0.9), 2.0, delta);
             // Bound lateral lag so high-speed turns cannot fling the camera through geometry in one sample.
@@ -95,6 +113,10 @@ public final class ChaseShotGenerator extends AbstractShotGenerator implements S
             } else {
                 Vec3d smoothed = CameraSmoothing.exponential(smoothedCamera, desired, responsiveness, delta);
                 smoothedCamera = CameraSmoothing.clampStep(smoothedCamera, smoothed, maxStep);
+                // Keep the chase rig on a slowly-evolving framing sphere. Speed-based distance still
+                // moves via smoothedDistance; free-space lag must not invent extra zoom breathing.
+                smoothedCamera = reprojectToFocusDistance(smoothedCamera, desired, target.focusPosition(),
+                        smoothedDistance, delta);
             }
 
             double fov = startFov;
@@ -115,6 +137,33 @@ public final class ChaseShotGenerator extends AbstractShotGenerator implements S
             previousPitch = base.pitch();
         }
         return finish(request, context, samples, warnings);
+    }
+
+    /**
+     * Softly restores the intended camera↔focus radius after free-space lag so the subject does not
+     * continuously grow/shrink on screen (classic chase "breathing").
+     */
+    static Vec3d reprojectToFocusDistance(Vec3d camera, Vec3d desired, Vec3d focus,
+                                          double plannedDistance, double deltaSeconds) {
+        if (camera == null || !camera.isFinite() || focus == null || !focus.isFinite()) return camera;
+        Vec3d offset = camera.subtract(focus);
+        double currentDistance = offset.length();
+        double targetDistance = desired != null && desired.isFinite()
+                ? Math.max(0.5, desired.distanceTo(focus))
+                : Math.max(0.5, plannedDistance);
+        if (currentDistance < 1.0e-6) {
+            Vec3d fallback = desired != null && desired.isFinite()
+                    ? desired.subtract(focus) : new Vec3d(0.0, 0.0, targetDistance);
+            if (fallback.lengthSquared() < 1.0e-8) fallback = new Vec3d(0.0, 0.0, targetDistance);
+            return focus.add(fallback.normalizeOr(new Vec3d(0.0, 0.0, 1.0)).multiply(targetDistance));
+        }
+        double blended = CameraSmoothing.exponential(currentDistance, targetDistance,
+                RADIUS_LOCK_RESPONSIVENESS, deltaSeconds);
+        double maxStep = MAX_RADIUS_CHANGE_BLOCKS_PER_SECOND * Math.max(1.0e-4, deltaSeconds);
+        if (Math.abs(blended - currentDistance) > maxStep) {
+            blended = currentDistance + Math.copySign(maxStep, blended - currentDistance);
+        }
+        return focus.add(offset.multiply(blended / currentDistance));
     }
 
     @Override

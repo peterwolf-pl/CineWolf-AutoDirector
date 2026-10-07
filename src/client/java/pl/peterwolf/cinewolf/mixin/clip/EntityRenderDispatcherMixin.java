@@ -11,9 +11,10 @@ import pl.peterwolf.cinewolf.clip.OcclusionClipController;
 
 @Mixin(EntityRenderDispatcher.class)
 public abstract class EntityRenderDispatcherMixin {
-    @Inject(method = "shouldRender", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "shouldRender(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/client/renderer/culling/Frustum;DDDF)Z",
+            at = @At("HEAD"), cancellable = true)
     private void cinewolf$hideOccludingEntities(Entity entity, Frustum frustum, double camX, double camY, double camZ,
-                                                CallbackInfoReturnable<Boolean> cir) {
+                                                float partialTick, CallbackInfoReturnable<Boolean> cir) {
         if (OcclusionClipController.get().shouldHideEntity(entity)) {
             cir.setReturnValue(false);
         }

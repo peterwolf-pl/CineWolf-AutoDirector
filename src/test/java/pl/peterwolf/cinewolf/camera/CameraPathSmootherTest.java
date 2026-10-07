@@ -280,6 +280,66 @@ class CameraPathSmootherTest {
     }
 
     @Test
+    void alternatingFocusDistanceBreathingIsStronglyAttenuated() {
+        // Classic follow/chase bug fingerprint: subject size pumps every sample while orbit angle is stable.
+        List<CameraSample> samples = new ArrayList<>();
+        for (int index = 0; index < 21; index++) {
+            double time = index * 0.05;
+            Vec3d focus = new Vec3d(time * 2.0, 2.0, 0.0);
+            double radius = index % 2 == 0 ? 5.0 : 9.0;
+            samples.add(sample(time, index * 1L, focus.add(new Vec3d(0.0, 1.5, -radius)), focus));
+        }
+
+        List<CameraSample> result = smoother.smooth(samples,
+                settings(true, 1.0, 1.0, 0.30, false, 2.0, 24.0));
+
+        double beforePeakToPeak = peakToPeakDistance(samples);
+        double afterPeakToPeak = peakToPeakDistance(result);
+        assertTrue(afterPeakToPeak < beforePeakToPeak * 0.35,
+                () -> "Focus-distance breathing not attenuated enough: " + beforePeakToPeak
+                        + " -> " + afterPeakToPeak);
+
+        // Interior samples should sit near the mean radius (~7), not swing 5↔9.
+        for (int index = 3; index < result.size() - 3; index++) {
+            double distance = result.get(index).position().distanceTo(result.get(index).lookAtPoint());
+            assertTrue(distance > 5.5 && distance < 8.5,
+                    "Interior radius still pumping at sample " + index + ": " + distance);
+        }
+    }
+
+    @Test
+    void sustainedLinearDollyIsPreserved() {
+        List<CameraSample> samples = new ArrayList<>();
+        for (int index = 0; index < 11; index++) {
+            double time = index * 0.2;
+            Vec3d focus = new Vec3d(0.0, 2.0, 0.0);
+            double radius = 12.0 - time; // dolly in at 1 block/s
+            samples.add(sample(time, index * 4L, focus.add(new Vec3d(0.0, 0.0, -radius)), focus));
+        }
+
+        List<CameraSample> result = smoother.smooth(samples,
+                settings(true, 1.0, 1.0, 0.35, false, 2.0, 24.0));
+
+        for (int index = 1; index < result.size() - 1; index++) {
+            double expected = 12.0 - result.get(index).cinematicTimeSeconds();
+            double actual = result.get(index).position().distanceTo(result.get(index).lookAtPoint());
+            assertEquals(expected, actual, 0.25,
+                    "Intentional dolly radius drifted at sample " + index);
+        }
+    }
+
+    private static double peakToPeakDistance(List<CameraSample> samples) {
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        for (int index = 1; index < samples.size() - 1; index++) {
+            double distance = samples.get(index).position().distanceTo(samples.get(index).lookAtPoint());
+            min = Math.min(min, distance);
+            max = Math.max(max, distance);
+        }
+        return max - min;
+    }
+
+    @Test
     void wideWindowDoesNotAmplifyNearCancellationOnFastIrregularOrbit() {
         double centerTime = 2.0;
         double radius = 10.0;

@@ -588,7 +588,35 @@ public final class GenerateMontagePanel {
         return changed;
     }
 
+    private void renderCameraKeyframeInterval() {
+        ImGui.separatorText(tr("cinewolf.section.camera_keyframes"));
+        boolean changed = false;
+        pl.peterwolf.cinewolf.config.KeyframeIntervalUnit[] units =
+                pl.peterwolf.cinewolf.config.KeyframeIntervalUnit.values();
+        comboValue.set(config.cameraKeyframeIntervalUnit.ordinal());
+        if (ImGui.combo(tr("cinewolf.field.camera_keyframe_unit") + "###montage-keyframe-unit", comboValue,
+                new String[] {tr("cinewolf.keyframe_interval.seconds"), tr("cinewolf.keyframe_interval.ticks")})) {
+            pl.peterwolf.cinewolf.config.KeyframeIntervalUnit next = units[comboValue.get()];
+            if (next != config.cameraKeyframeIntervalUnit) {
+                config.cameraKeyframeInterval = next == pl.peterwolf.cinewolf.config.KeyframeIntervalUnit.TICKS
+                        ? Math.max(1.0, Math.round(config.cameraKeyframeInterval * 20.0))
+                        : Math.max(0.05, config.cameraKeyframeInterval / 20.0);
+                config.cameraKeyframeIntervalUnit = next;
+                changed = true;
+            }
+        }
+        tooltip(tr("cinewolf.tooltip.camera_keyframe_interval"));
+        boolean ticks = config.cameraKeyframeIntervalUnit
+                == pl.peterwolf.cinewolf.config.KeyframeIntervalUnit.TICKS;
+        changed |= number(tr("cinewolf.field.camera_keyframe_interval") + "###montage-keyframe-interval",
+                config.cameraKeyframeInterval, ticks ? 1.0 : 0.1, ticks ? 1.0 : 0.05, ticks ? 600.0 : 30.0,
+                tr("cinewolf.tooltip.camera_keyframe_interval"),
+                value -> config.cameraKeyframeInterval = ticks ? Math.round(value) : value);
+        if (changed) pathSettingsChanged();
+    }
+
     private void renderPathSmoothingFields() {
+        renderCameraKeyframeInterval();
         ImGui.separatorText(tr("cinewolf.section.path_smoothing"));
         boolean changed = false;
 

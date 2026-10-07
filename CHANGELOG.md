@@ -1,5 +1,92 @@
 # Changelog
 
+## 2.0.33 - 2026-10-01
+
+- Camera keyframes are no longer written on every player step
+  - New setting **Camera keyframe every**, in seconds or replay ticks (20 ticks = 1 s)
+  - Default is 1 second. Flashback smooths the motion between those keys
+  - Teleports still cut. Available on the single-shot panel and Generate Montage
+
+## 2.0.32 - 2026-10-01
+
+- Camera keyframes are sparse control points, not a sample stream
+  - Flashback camera and FOV keys now use native **Smooth** (centripetal Catmull-Rom) so motion between keys stays smooth
+  - A key is added only when dropping it would miss the intended position, aim, roll, or FOV
+  - Removed the 0.5 s keyframe cap, the high-angular-speed keep, look-at-only keys, and neighbour keys on every collision sample
+  - Safety spacing is 8 s. Close shots and real collision bends still get a tighter position allowance
+  - Teleports hold the previous key instead of splining across the cut
+  - Existing configs on the old 0.05 / 0.35° / 0.08 / 0.5 s defaults migrate forward; custom tolerances are kept
+- Shot speed, RPM, easing, look-ahead, path smoothing, and the motion limiter still shape the dense camera path. They no longer decide how many keyframes are written
+
+## 2.0.31 - 2026-09-18
+
+- Port to Minecraft 26.3 (Wilderness Bound)
+  - Fabric Loader 0.19.5, Loom 1.17, Fabric API 0.160.7+26.3, Gradle 9.5.1
+  - Keybinds use `InputConstants.Type.KEYBOARD`
+  - Flashback compile pin remains 0.43.4 (latest published Flashback is still 26.2)
+
+## 2.0.30 - 2026-09-18
+
+- Fixed Generate Montage analysis failing with **Shot source time must move forwards**
+  - Highlight windows no longer collapse to zero length when several events share the In/Out tick
+  - Planner now rejects invalid windows and expands a degenerate interval so every shot still moves forward
+
+## 2.0.29 - 2026-09-18
+
+- **Flashback 0.43.4+** editor support (Minecraft 26.2)
+  - Gradle / Modrinth compile pin: `0.43.4` (`h6FH7iAC`)
+  - Compatibility gate: full editor integration on **0.42.1 and newer 0.x** (recommended **0.43.4**)
+  - Mixins, montage writers, and the CineWolf panel now enable on 0.43.4 and later 0.43.x / 0.44.x instead of only exactly 0.42.1
+  - Flashback 0.42.0 stays experimental; 0.41.x stays experimental (API assumed, risky mixins off)
+  - Flashback 1.0.0+ remains unsupported
+  - Docs, README, localization, and site compatibility strings updated for the range
+
+## 2.0.28 - 2026-07-28
+
+- **Flashback 0.42.1** is now the supported editor target (Minecraft 26.2)
+  - Gradle / Modrinth dependency: `0.42.1` (`HkyawEi6`)
+  - Compatibility gate: full editor integration on **exactly 0.42.1**
+  - Other `0.42.x` and legacy `0.41.x` remain experimental (API surface assumed, risky mixins off)
+  - Docs, README suggest version, and localization strings updated for the new pin
+  - Flashback 0.42.1 notes: fixed incorrect replay export speed
+
+## 2.0.27 - 2026-07-28
+
+- **Aircraft camera follows flight direction**, not passenger free-look
+  - When the subject is riding a vehicle, analysis samples the **mount’s yaw/pitch**, expands the BB to the vehicle, and tags `pose.entityType` with the mount id (so plane providers match)
+  - New `VehicleMotion` helper: forward prefers 3D travel velocity, then body yaw+pitch — never “player looking sideways while plane flies north”
+  - Vehicle Profile / Follow / Chase / Side Tracking use flight-aware forward (and aircraft up) so wing/chase shots track the nose
+  - Regression: velocity-over-look, nose-up pitch, passenger+plane type → AIRCRAFT
+
+## 2.0.26 - 2026-07-28
+
+- **Ridden vehicles no longer vanish** during CLIP occlusion (planes, boats, minecarts, mounts)
+  - Entity clip used to hide anything whose AABB contained the subject’s eyes — so sitting in a plane always deleted the plane
+  - Mount / same root-vehicle tree / passengers are never hidden; cockpit BB containing subject eyes is also kept
+  - Segment test no longer treats `contains(subjectEye)` as an occluder hit
+
+## 2.0.25 - 2026-07-28
+
+- **False Block Placement flood** — montage no longer labels ambient world updates as building
+  - Ignore block capture during Flashback fast-forward seeks (in addition to snapshot reconstruction)
+  - Reject large multi-block section packets (chunk/section rebuild signature)
+  - Require a nearby player (or breaker) actor; actorless air→block packets are dropped
+  - Detector also ignores actorless placement/destruction as defense in depth
+- **missing_target path failure** — sparse analysis samples no longer abort camera path generation
+  - `SampledTargetPoseResolver` holds the nearest known pose at edges / single-sample windows instead of returning empty
+  - Dimension gaps and out-of-range ticks hold rather than hard-failing the shot
+
+## 2.0.24 - 2026-07-28
+
+- **Cinematic camera lock** — killed continuous player zoom in/out ("breathing") seen on follow/chase/flight shots (e.g. parachute clips)
+  - Path smoother now temporally filters **focus distance** (camera↔subject radius), not only direction/aim
+  - Camera is always rebuilt on the final look-at with the smoothed radius (no accidental framing zoom from aim/position mismatch)
+  - Motion limiter caps radial zoom rate (~3.5 blocks/s) and FOV rate (~12°/s) inside a shot
+  - Follow / Chase / Side Tracking reproject free-space lag onto a framing sphere so lag rotates instead of pumping scale
+  - Vertical 9:16 pull-back is max-filtered and rate-limited so bound flicker (elytra/parachute) cannot pump zoom every sample
+  - Close-detail depth micro-move reduced from ±12% to ±4%
+- Regression coverage for alternating radius breathing, intentional dolly preservation, radial/FOV rate limits, and framing scale hold
+
 ## 2.0.23 - 2026-07-27
 
 - Added watermark size control for the top-right TV logo (scale 0.4–7.5, default 1.0)

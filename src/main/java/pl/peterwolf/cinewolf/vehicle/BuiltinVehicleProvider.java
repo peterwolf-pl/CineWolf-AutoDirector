@@ -1,6 +1,5 @@
 package pl.peterwolf.cinewolf.vehicle;
 
-import pl.peterwolf.cinewolf.camera.CameraMath;
 import pl.peterwolf.cinewolf.model.BoundingBox;
 import pl.peterwolf.cinewolf.model.TargetPose;
 import pl.peterwolf.cinewolf.model.TargetReference;
@@ -36,12 +35,18 @@ public final class BuiltinVehicleProvider implements VehicleProvider {
         } else if (category == null) {
             category = VehicleCategory.GENERIC;
         }
-        Vec3d forward = CameraMath.horizontalDirectionFromYaw(pose.yaw());
-        Vec3d right = Vec3d.UP.cross(forward).normalizeOr(new Vec3d(1.0, 0.0, 0.0));
+        Vec3d forward = VehicleMotion.resolveForward(target, pose);
+        Vec3d up = VehicleMotion.resolveUp(target, pose, forward);
+        Vec3d right = up.cross(forward).normalizeOr(new Vec3d(1.0, 0.0, 0.0));
         BoundingBox box = pose.boundingBox();
         double length = Math.max(0.8, Math.max(box.max().x() - box.min().x(), box.max().z() - box.min().z()));
         double width = Math.max(0.6, Math.min(box.max().x() - box.min().x(), box.max().z() - box.min().z()));
         double height = Math.max(0.6, box.max().y() - box.min().y());
+        // Aircraft often have large wings; keep a usable profile length even if BB is cube-like.
+        if (category == VehicleCategory.AIRCRAFT) {
+            length = Math.max(length, Math.max(width * 1.4, height * 2.0));
+            width = Math.max(width, length * 0.55);
+        }
         Vec3d center = box.center();
         List<VehicleAnchor> anchors = new ArrayList<>();
         anchors.add(new VehicleAnchor(VehicleAnchorKind.CENTER, center));
@@ -52,13 +57,13 @@ public final class BuiltinVehicleProvider implements VehicleProvider {
         anchors.add(new VehicleAnchor(VehicleAnchorKind.SIDE_RIGHT, center.add(right.multiply(width * 0.45))));
         anchors.add(new VehicleAnchor(VehicleAnchorKind.COCKPIT, pose.focusPosition()));
         anchors.add(new VehicleAnchor(VehicleAnchorKind.WING_LEFT,
-                center.subtract(right.multiply(width * 0.7)).add(new Vec3d(0.0, height * 0.2, 0.0))));
+                center.subtract(right.multiply(width * 0.7)).add(up.multiply(height * 0.15))));
         anchors.add(new VehicleAnchor(VehicleAnchorKind.WING_RIGHT,
-                center.add(right.multiply(width * 0.7)).add(new Vec3d(0.0, height * 0.2, 0.0))));
+                center.add(right.multiply(width * 0.7)).add(up.multiply(height * 0.15))));
         anchors.add(new VehicleAnchor(VehicleAnchorKind.WHEEL,
-                pose.position().add(right.multiply(width * 0.3)).add(new Vec3d(0.0, 0.2, 0.0))));
+                pose.position().add(right.multiply(width * 0.3)).add(up.multiply(0.2))));
         anchors.add(new VehicleAnchor(VehicleAnchorKind.COUPLING, center.subtract(forward.multiply(length * 0.5))));
-        return Optional.of(new VehicleDescriptor(target, List.of(), category, providerId(), forward, Vec3d.UP, box,
+        return Optional.of(new VehicleDescriptor(target, List.of(), category, providerId(), forward, up, box,
                 anchors, length, width, height));
     }
 

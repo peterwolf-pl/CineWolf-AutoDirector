@@ -1,6 +1,5 @@
 package pl.peterwolf.cinewolf.vehicle.integration;
 
-import pl.peterwolf.cinewolf.camera.CameraMath;
 import pl.peterwolf.cinewolf.model.BoundingBox;
 import pl.peterwolf.cinewolf.model.TargetPose;
 import pl.peterwolf.cinewolf.model.TargetReference;
@@ -9,6 +8,7 @@ import pl.peterwolf.cinewolf.vehicle.VehicleAnchor;
 import pl.peterwolf.cinewolf.vehicle.VehicleAnchorKind;
 import pl.peterwolf.cinewolf.vehicle.VehicleCategory;
 import pl.peterwolf.cinewolf.vehicle.VehicleDescriptor;
+import pl.peterwolf.cinewolf.vehicle.VehicleMotion;
 import pl.peterwolf.cinewolf.vehicle.VehicleProvider;
 
 import java.util.ArrayList;
@@ -31,26 +31,24 @@ public final class PeterWolfPlanesVehicleProvider implements VehicleProvider {
     @Override
     public boolean supports(TargetReference target, TargetPose pose) {
         String type = type(target, pose);
+        // pose.entityType is the mount type when the cinematic target is a passenger.
         return type.contains("peterwolf") && (type.contains("plane") || type.contains("aircraft"))
                 || type.contains("simpleplanes")
                 || type.contains("immersive_aircraft")
                 || type.contains("airplane")
                 || type.contains("biplane")
-                || (type.contains("plane") && !type.contains("minecart"));
+                || type.contains("glider")
+                || (type.contains("plane") && !type.contains("minecart"))
+                || (pose.inVehicle() && VehicleMotion.isAircraftLike(target, pose));
     }
 
     @Override
     public Optional<VehicleDescriptor> describe(TargetReference target, TargetPose pose) {
         if (!supports(target, pose)) return Optional.empty();
-        Vec3d horizontal = CameraMath.horizontalDirectionFromYaw(pose.yaw());
-        double pitchRad = Math.toRadians(pose.pitch());
-        Vec3d forward = new Vec3d(
-                horizontal.x() * Math.cos(pitchRad),
-                -Math.sin(pitchRad),
-                horizontal.z() * Math.cos(pitchRad)
-        ).normalizeOr(horizontal);
-        Vec3d right = Vec3d.UP.cross(forward).normalizeOr(new Vec3d(1, 0, 0));
-        Vec3d up = forward.cross(right).normalizeOr(Vec3d.UP);
+        // Prefer travel / body orientation — never passenger free-look alone.
+        Vec3d forward = VehicleMotion.resolveForward(target, pose);
+        Vec3d up = VehicleMotion.resolveUp(target, pose, forward);
+        Vec3d right = up.cross(forward).normalizeOr(new Vec3d(1, 0, 0));
         BoundingBox box = pose.boundingBox();
         double length = Math.max(2.5, Math.max(box.max().x() - box.min().x(), box.max().z() - box.min().z()) * 1.4);
         double width = Math.max(2.0, Math.min(box.max().x() - box.min().x(), box.max().z() - box.min().z()) * 2.2);

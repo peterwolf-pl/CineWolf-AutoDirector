@@ -77,7 +77,7 @@ public final class ProjectMigrationManager {
                         legacy.replayId().toString()
                 );
                 CineWolfProjectV2 migrated = CineWolfProjectV2.fromMontageProject(
-                        legacy, identity, "0.41.1", "Migrated " + legacy.projectId());
+                        legacy, identity, "0.42.1", "Migrated " + legacy.projectId());
                 warnings.add("project.migration.from_schema_" + schema);
                 return new MigrationResult(true, migrated, List.of(), warnings, null,
                         "migrated schema " + schema + " -> 2");

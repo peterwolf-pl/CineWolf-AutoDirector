@@ -23,17 +23,17 @@ public final class CineWolfKeybinds {
     public static void register() {
         MARK_MOMENT = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.cinewolf.mark_moment",
-                InputConstants.Type.KEYSYM,
+                InputConstants.Type.KEYBOARD,
                 InputConstants.KEY_H,
                 CATEGORY));
         MARK_FRAGMENT = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.cinewolf.mark_fragment",
-                InputConstants.Type.KEYSYM,
+                InputConstants.Type.KEYBOARD,
                 InputConstants.KEY_J,
                 CATEGORY));
         CANCEL_FRAGMENT = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.cinewolf.cancel_fragment",
-                InputConstants.Type.KEYSYM,
+                InputConstants.Type.KEYBOARD,
                 InputConstants.KEY_K,
                 CATEGORY));
     }

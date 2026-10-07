@@ -91,7 +91,51 @@ public final class OcclusionClipController {
         // Hide only when the entity volume intersects the camera→subject segment.
         Entity subjectEntity = findSubject(minecraft.level);
         if (subjectEntity == null || camera == null) return false;
-        return entityIntersectsSegment(entity, camera.getEyePosition(1.0f), subjectEntity.getEyePosition(1.0f));
+        // Critical: never erase the mount the subject is riding (planes, boats, minecarts, horses…).
+        // The old test used AABB.contains(subject eyes), so any vehicle containing the player was
+        // always treated as an occluder and disappeared on camera.
+        if (isSubjectMountOrRelated(entity, subjectEntity)) return false;
+        Vec3 subjectEye = subjectEntity.getEyePosition(1.0f);
+        // Cockpit / shell: subject eyes sit inside the vehicle BB even when passenger links differ
+        // across multiparts or soft plane mods.
+        if (entity.getBoundingBox().inflate(0.35).contains(subjectEye)) return false;
+        return entityIntersectsSegment(entity, camera.getEyePosition(1.0f), subjectEye);
+    }
+
+    /**
+     * True when {@code entity} is the subject's vehicle, shares the same root vehicle tree
+     * (co-passengers / multiparts), or carries the subject as a passenger.
+     */
+    static boolean isSubjectMountOrRelated(Entity entity, Entity subject) {
+        if (entity == null || subject == null) return false;
+        if (entity.getUUID().equals(subject.getUUID())) return true;
+
+        Entity subjectRoot = subject.getRootVehicle();
+        Entity entityRoot = entity.getRootVehicle();
+        if (subjectRoot != null && entityRoot != null
+                && subjectRoot.getUUID().equals(entityRoot.getUUID())
+                && (!subjectRoot.getUUID().equals(subject.getUUID())
+                || !entityRoot.getUUID().equals(entity.getUUID()))) {
+            return true;
+        }
+
+        Entity vehicle = subject.getVehicle();
+        while (vehicle != null) {
+            if (vehicle.getUUID().equals(entity.getUUID())) return true;
+            vehicle = vehicle.getVehicle();
+        }
+
+        return hasPassenger(entity, subject.getUUID(), 0);
+    }
+
+    private static boolean hasPassenger(Entity host, UUID passengerId, int depth) {
+        if (host == null || passengerId == null || depth > 8) return false;
+        for (Entity passenger : host.getPassengers()) {
+            if (passenger == null) continue;
+            if (passengerId.equals(passenger.getUUID())) return true;
+            if (hasPassenger(passenger, passengerId, depth + 1)) return true;
+        }
+        return false;
     }
 
     public void tick() {
@@ -227,6 +271,8 @@ public final class OcclusionClipController {
 
     private static boolean entityIntersectsSegment(Entity entity, Vec3 from, Vec3 to) {
         AABB box = entity.getBoundingBox().inflate(0.15);
-        return box.clip(from, to).isPresent() || box.contains(from) || box.contains(to);
+        // Do not use contains(to): for a ridden vehicle the subject eye is inside the BB, so the
+        // mount would always "intersect" and get hidden. Intersection is ray-only + camera inside.
+        return box.clip(from, to).isPresent() || box.contains(from);
     }
 }

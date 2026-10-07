@@ -26,7 +26,7 @@ export function DownloadCard({ detailed = false }: DownloadCardProps) {
       <dl className="release-details">
         <div><dt>Version</dt><dd>{siteConfig.version}</dd></div>
         <div><dt>Minecraft</dt><dd>{siteConfig.minecraftVersion}</dd></div>
-        <div><dt>Fabric</dt><dd>Loader 0.19.3+</dd></div>
+        <div><dt>Fabric</dt><dd>Loader 0.19.5+</dd></div>
         <div><dt>Flashback</dt><dd>{siteConfig.flashbackVersion} required</dd></div>
         <div><dt>File type</dt><dd>Fabric mod JAR</dd></div>
         <div><dt>Release status</dt><dd>Current</dd></div>

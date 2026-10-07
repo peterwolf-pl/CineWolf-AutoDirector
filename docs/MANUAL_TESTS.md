@@ -1,6 +1,6 @@
 # Manual test checklist
 
-Use Minecraft 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, Flashback 0.41.1, and the current CineWolf **2.0.0** build. Keep a backup copy of any replay project used for destructive conflict tests.
+Use Minecraft 26.3, Java 25, Fabric Loader 0.19.5, Fabric API 0.160.7+26.3, Flashback **0.43.4** (or newer 0.x), and the current CineWolf **2.0.33** build. Keep a backup copy of any replay project used for destructive conflict tests.
 
 ## Version 2.0 acceptance checklist (summary)
 
@@ -112,12 +112,12 @@ Record the replay name, selected tick range, preset, targets, settings, result, 
 - [ ] Confirm a duration-based shot clamps at replay end and displays the localized notice.
 - [ ] Confirm adaptive sampling remains bounded around turns, acceleration, elevation, and teleport discontinuities.
 - [ ] Track a moving remote player at 60 FPS and confirm the generated camera never moves backwards for one replay tick at the five-tick packet/interpolation cadence.
-- [ ] Confirm Smoothstep/Smootherstep warnings and baked linear keyframes remain correct.
+- [ ] Confirm generated camera/FOV keys use Flashback Smooth interpolation, are much sparser than the preview sample rate, and still track the subject through turns and collision bends.
 - [ ] Confirm Preview Path clears on parameter/target/timeline changes and stale previews cannot be written.
 - [ ] Confirm manual Add/Replace conflict behavior and **Undo Last CineWolf Shot** still preserve unrelated keys.
 
 ## Startup and compatibility regression
 
-- [ ] Start with supported Flashback 0.41.1 and confirm all three guarded CineWolf mixins apply without errors.
+- [ ] Start with supported Flashback 0.43.4 (or 0.42.1+) and confirm all three guarded CineWolf mixins apply without errors.
 - [ ] Start with an intentionally unsupported Flashback build and confirm the integration mixins are declined, one clear compatibility message appears, and the client does not crash.
 - [ ] Confirm no AI/cloud/telemetry/network-upload setting or background request exists during analysis, preview, generation, debug export, or replay close.

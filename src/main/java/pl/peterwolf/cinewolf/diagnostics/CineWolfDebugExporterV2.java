@@ -86,7 +86,7 @@ public final class CineWolfDebugExporterV2 {
         return new CineWolfDebugExportV2(
                 CineWolfDebugExportV2.SCHEMA,
                 CineWolfAutoDirector.VERSION,
-                "26.2",
+                "26.3",
                 "unknown",
                 flashbackVersion,
                 identity,

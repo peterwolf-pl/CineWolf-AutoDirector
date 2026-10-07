@@ -235,6 +235,7 @@ public final class AutoDirectorPanel {
                     tr("cinewolf.tooltip.look_ahead"), value -> config.lookAheadSeconds = value);
         }
 
+        renderCameraKeyframeInterval();
         renderPathSmoothingFields();
 
         ObstacleHandlingMode[] modes = ObstacleHandlingMode.values();
@@ -262,6 +263,36 @@ public final class AutoDirectorPanel {
             markChanged();
         }
         tooltip(tr("cinewolf.tooltip.reset_defaults"));
+    }
+
+    private void renderCameraKeyframeInterval() {
+        ImGui.separatorText(tr("cinewolf.section.camera_keyframes"));
+        boolean changed = false;
+        pl.peterwolf.cinewolf.config.KeyframeIntervalUnit[] units =
+                pl.peterwolf.cinewolf.config.KeyframeIntervalUnit.values();
+        comboValue.set(config.cameraKeyframeIntervalUnit.ordinal());
+        if (ImGui.combo(tr("cinewolf.field.camera_keyframe_unit"), comboValue, new String[] {
+                tr("cinewolf.keyframe_interval.seconds"), tr("cinewolf.keyframe_interval.ticks")})) {
+            pl.peterwolf.cinewolf.config.KeyframeIntervalUnit next = units[comboValue.get()];
+            if (next != config.cameraKeyframeIntervalUnit) {
+                config.cameraKeyframeInterval = next == pl.peterwolf.cinewolf.config.KeyframeIntervalUnit.TICKS
+                        ? Math.max(1.0, Math.round(config.cameraKeyframeInterval * 20.0))
+                        : Math.max(0.05, config.cameraKeyframeInterval / 20.0);
+                config.cameraKeyframeIntervalUnit = next;
+                changed = true;
+            }
+        }
+        tooltip(tr("cinewolf.tooltip.camera_keyframe_interval"));
+        boolean ticks = config.cameraKeyframeIntervalUnit
+                == pl.peterwolf.cinewolf.config.KeyframeIntervalUnit.TICKS;
+        changed |= number(tr("cinewolf.field.camera_keyframe_interval"), config.cameraKeyframeInterval,
+                ticks ? 1.0 : 0.1, ticks ? 1.0 : 0.05, ticks ? 600.0 : 30.0,
+                tr("cinewolf.tooltip.camera_keyframe_interval"),
+                value -> config.cameraKeyframeInterval = ticks ? Math.round(value) : value);
+        if (changed) {
+            markChanged();
+            montagePanel.pathSettingsChanged();
+        }
     }
 
     private void renderPathSmoothingFields() {
@@ -338,8 +369,8 @@ public final class AutoDirectorPanel {
         ImGui.textUnformatted(tr("cinewolf.timeline.start", timestamp(request.replayStartTime()), request.replayStartTime()));
         ImGui.textUnformatted(tr("cinewolf.timeline.end", timestamp(request.replayEndTime()), request.replayEndTime()));
         ImGui.textUnformatted(tr("cinewolf.timeline.duration", format(request.durationSeconds())));
-        int estimate = Math.max(2, (int) Math.ceil(request.durationSeconds() * config.samplesPerSecond) + 1);
-        ImGui.textUnformatted(tr("cinewolf.timeline.estimated", Math.min(estimate, config.maximumKeyframes)));
+        ImGui.textUnformatted(tr("cinewolf.timeline.estimated",
+                format(config.resolvedCameraKeyframeIntervalSeconds())));
         if (adapter.getSelectedTimeRange().selected()) ImGui.textDisabled(tr("cinewolf.timeline.using_range"));
         else ImGui.textDisabled(tr("cinewolf.timeline.using_duration"));
         if (interval.clippedToReplayEnd()) {

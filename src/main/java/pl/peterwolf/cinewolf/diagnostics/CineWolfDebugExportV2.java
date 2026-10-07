@@ -34,7 +34,7 @@ public record CineWolfDebugExportV2(
     public CineWolfDebugExportV2 {
         schemaVersion = schemaVersion <= 0 ? SCHEMA : schemaVersion;
         cineWolfVersion = Objects.requireNonNullElse(cineWolfVersion, CineWolfAutoDirector.VERSION);
-        minecraftVersion = Objects.requireNonNullElse(minecraftVersion, "26.2");
+        minecraftVersion = Objects.requireNonNullElse(minecraftVersion, "26.3");
         fabricLoaderVersion = Objects.requireNonNullElse(fabricLoaderVersion, "unknown");
         flashbackVersion = Objects.requireNonNullElse(flashbackVersion, "missing");
         configuration = Map.copyOf(configuration == null ? Map.of() : configuration);

@@ -14,6 +14,12 @@ import java.util.TreeMap;
 public final class SampledTargetPoseResolver implements TargetPoseResolver {
     private static final double TELEPORT_DISTANCE = 16.0;
     private static final double MAX_VELOCITY = 64.0;
+    /**
+     * Hold the nearest known pose when the requested tick falls slightly outside sampled coverage
+     * (or when only one sample exists). Previously returned empty and aborted path generation with
+     * {@code missing_target} for ordinary sparse analysis windows.
+     */
+    private static final long MAX_EDGE_HOLD_TICKS = 80L; // 4 seconds
     private final NavigableMap<Long, TargetPose> poses;
 
     public SampledTargetPoseResolver(Map<Long, TargetPose> poses) {
@@ -22,15 +28,29 @@ public final class SampledTargetPoseResolver implements TargetPoseResolver {
 
     @Override
     public Optional<TargetPose> resolve(TargetReference target, long replayTime) {
+        if (poses.isEmpty()) return Optional.empty();
+
         TargetPose exact = poses.get(replayTime);
         if (exact != null) return Optional.of(withEstimatedVelocity(replayTime, exact));
 
         Map.Entry<Long, TargetPose> floor = poses.floorEntry(replayTime);
         Map.Entry<Long, TargetPose> ceil = poses.ceilingEntry(replayTime);
-        if (floor == null || ceil == null || floor.getKey().equals(ceil.getKey())) return Optional.empty();
+
+        // Outside sampled range or single-sided gap: hold nearest pose instead of failing the shot.
+        if (floor == null && ceil == null) return Optional.empty();
+        if (floor == null) return holdIfNear(ceil, replayTime);
+        if (ceil == null) return holdIfNear(floor, replayTime);
+        if (floor.getKey().equals(ceil.getKey())) {
+            return Optional.of(withEstimatedVelocity(replayTime, floor.getValue()));
+        }
+
         TargetPose left = floor.getValue();
         TargetPose right = ceil.getValue();
-        if (!left.dimension().equals(right.dimension())) return Optional.empty();
+        if (!left.dimension().equals(right.dimension())) {
+            // Prefer the nearer-in-time side rather than aborting the whole path.
+            long mid = (floor.getKey() + ceil.getKey()) / 2L;
+            return Optional.of(withEstimatedVelocity(replayTime, replayTime <= mid ? left : right, true));
+        }
 
         double span = right.position().distanceTo(left.position());
         boolean discontinuity = left.discontinuity() || right.discontinuity() || span > TELEPORT_DISTANCE;
@@ -59,6 +79,15 @@ public final class SampledTargetPoseResolver implements TargetPoseResolver {
                 left.dimension(),
                 discontinuity
         ));
+    }
+
+    private Optional<TargetPose> holdIfNear(Map.Entry<Long, TargetPose> edge, long replayTime) {
+        if (edge == null) return Optional.empty();
+        long gap = Math.abs(replayTime - edge.getKey());
+        // Always hold within the soft window; beyond it still hold (with discontinuity) so montage
+        // path generation does not hard-fail on sparse coverage — framing may freeze briefly.
+        boolean far = gap > MAX_EDGE_HOLD_TICKS;
+        return Optional.of(withEstimatedVelocity(replayTime, edge.getValue(), far || edge.getValue().discontinuity()));
     }
 
     private TargetPose withEstimatedVelocity(long replayTime, TargetPose pose) {

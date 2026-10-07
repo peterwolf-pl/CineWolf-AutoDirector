@@ -4,7 +4,7 @@ https://cinewolf.peterwolf.pl/
 
 CineWolf AutoDirector is a client-side Fabric extension for Flashback that turns replay activity into editable cinematic camera work. It generates single shots or multi-shot montages with deterministic local replay analysis.
 
-Version **2.0.1** targets Minecraft Java Edition 26.2, Java 25, Fabric Loader 0.19.3, Fabric API 0.153.0+26.2, and Flashback 0.41.1.
+Version **2.0.33** targets Minecraft Java Edition 26.3, Java 25, Fabric Loader 0.19.5, Fabric API 0.160.7+26.3, and Flashback **0.43.4+** (0.42.1 and newer 0.x).
 
 ## Privacy and determinism
 
@@ -48,10 +48,10 @@ Built-ins live in a registry that also accepts validated user-defined presets (i
 
 ## Installation
 
-1. Install Fabric Loader for Minecraft 26.2.
-2. Install Fabric API 0.153.0+26.2 or a compatible newer 26.2 build.
-3. Install Flashback 0.41.1.
-4. Put `cinewolf-autodirector-2.0.1.jar` in the client `mods` folder.
+1. Install Fabric Loader for Minecraft 26.3.
+2. Install Fabric API 0.160.7+26.3 or a compatible newer 26.3 build.
+3. Install Flashback 0.43.4 or a newer 0.x build (0.42.1+).
+4. Put `cinewolf-autodirector-2.0.33.jar` in the client `mods` folder.
 5. Open a replay in Flashback. The **CineWolf AutoDirector** window appears in the replay editor.
 
 Flashback is an external dependency for cinematic editing features. CineWolf does not shade, bundle, copy, or modify it. Without Flashback, CineWolf still loads safely with editor features disabled.
@@ -88,7 +88,7 @@ The filter runs before local-world collision checks and never moves collision-co
 
 CineWolf keeps output duration, source replay time, replay speed, and native camera-track time separate. Flashback evaluates native tracks on the source replay-tick axis. CineWolf therefore writes Timelapse points whose key positions are source replay ticks and whose values are elapsed output ticks; Flashback derives playback TPS from the ratio between those axes.
 
-Flashback 0.41.1 does not provide a stable source-cut abstraction for arbitrary non-adjacent replay segments. Version 1.2.0 consequently plans one continuous, strictly increasing source window and does not reverse, relocate, or splice source-bound camera content. Replay-speed changes within that window remain inside configured minimum, maximum, and adjacent-change bounds. A non-chronological Trailer request is reported and planned chronologically rather than represented inaccurately.
+Flashback 0.43.4 does not provide a stable source-cut abstraction for arbitrary non-adjacent replay segments. Version 1.2.0 consequently plans one continuous, strictly increasing source window and does not reverse, relocate, or splice source-bound camera content. Replay-speed changes within that window remain inside configured minimum, maximum, and adjacent-change bounds. A non-chronological Trailer request is reported and planned chronologically rather than represented inaccurately.
 
 ## Configuration
 
@@ -96,7 +96,7 @@ Preferences are stored in `config/cinewolf-autodirector.json`. Schema version 5 
 
 ## Known limitations
 
-- Flashback has no stable public extension API. CineWolf 2.0 supports exactly Flashback 0.41.1 for full editor integration and disables risky mixins on other versions.
+- Flashback has no stable public extension API. CineWolf 2.0 enables full editor integration on Flashback **0.42.1+** (recommended **0.43.4**) and disables risky mixins on older or major-incompatible versions.
 - Arbitrary-time entity state is obtained by pausing and seeking the local replay, waiting until Flashback state is ready, copying immutable snapshots, and restoring the original state. Long ranges can take noticeable time.
 - Events are emitted only when direct packet/state evidence or conservative deterministic inference is available. Missing signals are warnings, not fabricated events; modded entity behavior can still produce false positives or false negatives.
 - Native camera/FOV/Timelapse tracks are source-bound. Continuous chronological source windows remain the safe default; multi-region assembly is limited by Flashback Timelapse capabilities.
@@ -114,4 +114,4 @@ See [Architecture](docs/ARCHITECTURE.md), [Flashback integration](docs/FLASHBACK
 ./gradlew clean build
 ```
 
-The project requires a Java 25 toolchain. Flashback 0.41.1 is resolved from Modrinth Maven for compilation and the development runtime only; it is not included in the CineWolf JAR.
+The project requires a Java 25 toolchain. Flashback 0.43.4 is resolved from Modrinth Maven for compilation and the development runtime only; it is not included in the CineWolf JAR.

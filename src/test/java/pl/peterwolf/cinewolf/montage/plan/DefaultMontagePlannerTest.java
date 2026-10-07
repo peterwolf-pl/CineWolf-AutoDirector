@@ -392,6 +392,64 @@ class DefaultMontagePlannerTest {
         }
     }
 
+    @Test
+    void clusteredEventsAtRangeStartStillProduceForwardShots() {
+        MontagePreset preset = preset(MontagePresetType.FIFTEEN_SECONDS);
+        ReplayAnalysisResult clustered = clusteredPeakAnalysis(0L, 2_400L, 0L, 8);
+        MontageRequest request = MontageRequest.fromPreset(preset, 0, 2_400, Optional.of(TestFixtures.TARGET));
+
+        MontagePlan plan = new DefaultMontagePlanner().createPlan(clustered, request,
+                new MontagePlanningContext(AVAILABLE, SamplingSettings.defaults()));
+
+        assertFalse(plan.enabledShots().isEmpty());
+        assertPlanValid(plan);
+        assertTrue(plan.enabledShots().stream().allMatch(shot ->
+                shot.sourceReplayEndTime() > shot.sourceReplayStartTime()));
+    }
+
+    @Test
+    void clusteredEventsAtRangeEndStillProduceForwardShots() {
+        MontagePreset preset = preset(MontagePresetType.FIFTEEN_SECONDS);
+        ReplayAnalysisResult clustered = clusteredPeakAnalysis(0L, 2_400L, 2_400L, 8);
+        MontageRequest request = MontageRequest.fromPreset(preset, 0, 2_400, Optional.of(TestFixtures.TARGET));
+
+        MontagePlan plan = new DefaultMontagePlanner().createPlan(clustered, request,
+                new MontagePlanningContext(AVAILABLE, SamplingSettings.defaults()));
+
+        assertFalse(plan.enabledShots().isEmpty());
+        assertPlanValid(plan);
+        assertTrue(plan.enabledShots().stream().allMatch(shot ->
+                shot.sourceReplayEndTime() > shot.sourceReplayStartTime()));
+    }
+
+    private static ReplayAnalysisResult clusteredPeakAnalysis(long rangeStart, long rangeEnd, long peak, int count) {
+        ReplayAnalysisRequest request = ReplayAnalysisRequest.defaults(rangeStart, rangeEnd);
+        ReplayEntitySnapshot entity = ReplayEntitySnapshot.basic(TestFixtures.TARGET,
+                TestFixtures.pose(Vec3d.ZERO, Vec3d.ZERO, 0.0));
+        List<ReplaySample> samples = List.of(
+                new ReplaySample(rangeStart, Map.of(TestFixtures.TARGET, entity), List.of(), List.of()),
+                new ReplaySample(rangeEnd, Map.of(TestFixtures.TARGET, entity), List.of(), List.of()));
+        ReplayEventType[] types = {ReplayEventType.REPLAY_MARKER, ReplayEventType.PAUSE, ReplayEventType.COMBAT,
+                ReplayEventType.HIGH_SPEED, ReplayEventType.LANDING, ReplayEventType.FLIGHT,
+                ReplayEventType.BLOCK_PLACEMENT, ReplayEventType.DEATH};
+        java.util.ArrayList<ScoredReplayEvent> scored = new java.util.ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            ReplayEventType type = types[index % types.length];
+            ReplayEvent event = ReplayEvent.create(type, peak, peak, peak,
+                    Set.of(TestFixtures.TARGET), new Vec3d(index, 64, index), 0.8, 0.9,
+                    EventEvidence.of(EventEvidence.DetectionSource.DERIVED_MOVEMENT));
+            scored.add(new ScoredReplayEvent(event, 0.8, 0.8, 0.8, 0.8,
+                    0.0, 0.1, 0.0, 0.0, 0.9 - index * 0.01, List.of("clustered-peak")));
+        }
+        List<ReplayEvent> events = scored.stream().map(ScoredReplayEvent::event).toList();
+        SampleSelection selection = new SampleSelection(samples, List.of(), samples, List.of());
+        ReplayAnalysisStatistics stats = new ReplayAnalysisStatistics(rangeEnd - rangeStart, 2, 2, 0, 2, 1,
+                events.size(), events.size(), 1, Map.of());
+        return new ReplayAnalysisResult(request, selection, samples, Map.of(), events, events, scored,
+                List.of(), List.of(new RankedReplayTarget(TestFixtures.TARGET, 1.0, rangeEnd - rangeStart,
+                100.0, events.size(), List.of("test"))), stats, List.<AnalysisWarning>of());
+    }
+
     private static ReplayAnalysisResult sparseHighlightAnalysis() {
         ReplayAnalysisRequest request = ReplayAnalysisRequest.defaults(0, 6_000);
         ReplayEntitySnapshot entity = ReplayEntitySnapshot.basic(TestFixtures.TARGET,

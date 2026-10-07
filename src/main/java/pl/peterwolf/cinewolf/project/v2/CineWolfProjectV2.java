@@ -38,7 +38,7 @@ public record CineWolfProjectV2(
     public CineWolfProjectV2 {
         if (schemaVersion <= 0) schemaVersion = CURRENT_SCHEMA;
         cineWolfVersion = Objects.requireNonNullElse(cineWolfVersion, CineWolfAutoDirector.VERSION);
-        flashbackVersion = Objects.requireNonNullElse(flashbackVersion, "0.41.1");
+        flashbackVersion = Objects.requireNonNullElse(flashbackVersion, "0.42.1");
         Objects.requireNonNull(projectId, "projectId");
         projectName = Objects.requireNonNullElse(projectName, "Untitled Project");
         Objects.requireNonNull(replayIdentity, "replayIdentity");

@@ -17,13 +17,14 @@ import org.joml.Vector3d;
 import pl.peterwolf.cinewolf.api.ReplayEditorAdapter;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
 import pl.peterwolf.cinewolf.model.CameraSample;
-import pl.peterwolf.cinewolf.model.EasingType;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import pl.peterwolf.cinewolf.undo.CineWolfUndoManager;
 
@@ -64,8 +65,8 @@ public final class FlashbackKeyframeWriter {
         if (cameraSamples.size() < 2) {
             return new ReplayEditorAdapter.KeyframeWriteResult(false, 0, 0, "cinewolf.write.two_ticks");
         }
-        LinkedHashMap<Integer, CameraSample> fovSamples = simplifyFov(cameraSamples);
-        InterpolationType interpolation = interpolation(plan.request().easing());
+        Set<Integer> holdTicks = holdBeforeDiscontinuity(plan.simplifiedSamples());
+        LinkedHashMap<Integer, CameraSample> fovSamples = simplifyFov(cameraSamples, holdTicks);
 
         long stamp = state.acquireWrite();
         try {
@@ -83,6 +84,8 @@ public final class FlashbackKeyframeWriter {
             redo.add(new EditorSceneHistoryAction.AddTrack(CameraKeyframeType.INSTANCE, 0));
             for (Map.Entry<Integer, CameraSample> entry : cameraSamples.entrySet()) {
                 CameraSample sample = entry.getValue();
+                InterpolationType interpolation = holdTicks.contains(entry.getKey())
+                        ? InterpolationType.HOLD : InterpolationType.SMOOTH;
                 CameraKeyframe keyframe = new CameraKeyframe(new Vector3d(sample.position().x(), sample.position().y(), sample.position().z()),
                         (float) sample.yaw(), (float) sample.pitch(), (float) sample.roll(), interpolation);
                 redo.add(new EditorSceneHistoryAction.SetKeyframe(CameraKeyframeType.INSTANCE, 0, entry.getKey(), keyframe));
@@ -90,6 +93,8 @@ public final class FlashbackKeyframeWriter {
 
             redo.add(new EditorSceneHistoryAction.AddTrack(FOVKeyframeType.INSTANCE, 1));
             for (Map.Entry<Integer, CameraSample> entry : fovSamples.entrySet()) {
+                InterpolationType interpolation = holdTicks.contains(entry.getKey())
+                        ? InterpolationType.HOLD : InterpolationType.SMOOTH;
                 redo.add(new EditorSceneHistoryAction.SetKeyframe(FOVKeyframeType.INSTANCE, 1, entry.getKey(),
                         new FOVKeyframe((float) entry.getValue().fov(), interpolation)));
             }
@@ -178,27 +183,38 @@ public final class FlashbackKeyframeWriter {
         return result;
     }
 
-    private static LinkedHashMap<Integer, CameraSample> simplifyFov(LinkedHashMap<Integer, CameraSample> samples) {
+    private static Set<Integer> holdBeforeDiscontinuity(List<CameraSample> samples) {
+        Set<Integer> hold = new HashSet<>();
+        for (int index = 0; index < samples.size() - 1; index++) {
+            if (samples.get(index + 1).discontinuity()) {
+                hold.add(Math.toIntExact(samples.get(index).replayTime()));
+            }
+        }
+        return hold;
+    }
+
+    private static LinkedHashMap<Integer, CameraSample> simplifyFov(LinkedHashMap<Integer, CameraSample> samples,
+                                                                    Set<Integer> holdTicks) {
         LinkedHashMap<Integer, CameraSample> result = new LinkedHashMap<>();
         List<Map.Entry<Integer, CameraSample>> entries = new ArrayList<>(samples.entrySet());
         result.put(entries.getFirst().getKey(), entries.getFirst().getValue());
         for (int i = 1; i < entries.size() - 1; i++) {
+            Map.Entry<Integer, CameraSample> entry = entries.get(i);
+            if (holdTicks.contains(entry.getKey())) {
+                result.put(entry.getKey(), entry.getValue());
+                continue;
+            }
             double previous = entries.get(i - 1).getValue().fov();
-            double current = entries.get(i).getValue().fov();
+            double current = entry.getValue().fov();
             double next = entries.get(i + 1).getValue().fov();
-            if (Math.abs(current - (previous + next) * 0.5) > 0.05) result.put(entries.get(i).getKey(), entries.get(i).getValue());
+            double span = entries.get(i + 1).getKey() - entries.get(i - 1).getKey();
+            double fraction = span == 0 ? 0.5 : (entry.getKey() - entries.get(i - 1).getKey()) / (double) span;
+            if (Math.abs(current - (previous + (next - previous) * fraction)) > 1.0) {
+                result.put(entry.getKey(), entry.getValue());
+            }
         }
         result.put(entries.getLast().getKey(), entries.getLast().getValue());
         return result;
-    }
-
-    private static InterpolationType interpolation(EasingType easing) {
-        return switch (easing) {
-            case LINEAR, SMOOTHSTEP, SMOOTHERSTEP -> InterpolationType.LINEAR;
-            case EASE_IN -> InterpolationType.EASE_IN;
-            case EASE_OUT -> InterpolationType.EASE_OUT;
-            case EASE_IN_OUT_CUBIC -> InterpolationType.EASE_IN_OUT;
-        };
     }
 
     private record OperationSnapshot(EditorState editorState, int sceneIndex, KeyframeTrack cameraTrack,

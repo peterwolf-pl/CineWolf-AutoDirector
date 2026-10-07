@@ -30,7 +30,7 @@ export const docs: DocSection[] = [
       "Place all required JAR files in the Minecraft mods folder.",
       "Start Minecraft, open or create a Flashback replay, then open the CineWolf panel in the replay editor.",
     ],
-    code: "mods/\n  fabric-api-<matching-version>.jar\n  flashback-0.41.1.jar\n  cinewolf-autodirector-1.3.11.jar",
+    code: "mods/\n  fabric-api-<matching-version>.jar\n  flashback-0.43.4.jar\n  cinewolf-autodirector-2.0.29.jar",
   },
   {
     id: "first-shot",
@@ -246,9 +246,9 @@ export const docs: DocSection[] = [
     id: "flashback-integration",
     title: "Flashback integration",
     group: "Reference",
-    summary: "Use the exact tested Flashback version for the guarded editor integration.",
+    summary: "Use a supported Flashback 0.x build for the guarded editor integration.",
     body: [
-      `CineWolf ${compatibility.version} supports Flashback ${compatibility.flashbackVersion} exactly and writes native Camera, FOV, and replay-time keyframes after validation.`,
+      `CineWolf ${compatibility.version} supports Flashback ${compatibility.flashbackVersion} (0.42.1 and newer 0.x) and writes native Camera, FOV, and replay-time keyframes after validation.`,
       "Flashback is external: CineWolf does not bundle, copy, or modify it. On an unsupported Flashback version, CineWolf disables its editor integration rather than guessing at incompatible internals.",
       "Flashback has no stable public API for native timeline event glyphs. CineWolf therefore shows events in its own mini-timeline and leaves native replay markers unchanged.",
     ],

@@ -15,6 +15,7 @@ import pl.peterwolf.cinewolf.model.TrackingSide;
 import pl.peterwolf.cinewolf.model.Vec3d;
 import pl.peterwolf.cinewolf.montage.preset.FramingType;
 import pl.peterwolf.cinewolf.vehicle.VehicleDescriptor;
+import pl.peterwolf.cinewolf.vehicle.VehicleMotion;
 import pl.peterwolf.cinewolf.vehicle.VehicleProviderRegistry;
 
 import java.util.ArrayList;
@@ -51,15 +52,23 @@ public final class SideTrackingShotGenerator extends AbstractShotGenerator imple
             delta = Math.max(1.0e-4, delta);
             TargetPose target = requiredPose(request, context, replayTime);
             VehicleDescriptor vehicle = vehicles.requireOrGeneric(request.target(), target);
-            Vec3d measured = new Vec3d(target.velocity().x(), 0.0, target.velocity().z());
-            double speed = measured.length();
+            boolean aerial = target.inVehicle() || VehicleMotion.isAircraftLike(request.target(), target);
+            Vec3d measured = aerial
+                    ? VehicleMotion.resolveForward(request.target(), target)
+                    : new Vec3d(target.velocity().x(), 0.0, target.velocity().z());
+            double speed = target.velocity().length();
             if (measured.lengthSquared() < 0.0025) measured = vehicle.forward();
-            if (measured.lengthSquared() < 0.0025) measured = CameraMath.horizontalDirectionFromYaw(target.yaw());
+            if (measured.lengthSquared() < 0.0025) {
+                measured = aerial
+                        ? CameraMath.directionFromYawPitch(target.yaw(), target.pitch())
+                        : CameraMath.horizontalDirectionFromYaw(target.yaw());
+            }
             double responsiveness = speed > 8.0 ? 2.8 : 4.0;
             double maxTurn = speed > 8.0 ? 70.0 : 100.0;
             direction = CameraSmoothing.smoothDirectionRateLimited(direction, measured.normalizeOr(direction),
                     responsiveness, delta, maxTurn);
-            Vec3d right = Vec3d.UP.cross(direction).normalizeOr(new Vec3d(1.0, 0.0, 0.0));
+            Vec3d up = aerial ? VehicleMotion.resolveUp(request.target(), target, direction) : Vec3d.UP;
+            Vec3d right = up.cross(direction).normalizeOr(new Vec3d(1.0, 0.0, 0.0));
             Vec3d desired = target.position()
                     .add(right.multiply(sideSign * distance))
                     .add(direction.multiply(forwardOffset))
@@ -70,6 +79,9 @@ public final class SideTrackingShotGenerator extends AbstractShotGenerator imple
             } else {
                 Vec3d smoothed = CameraSmoothing.exponential(smoothedCamera, desired, request.cameraSpeed(), delta);
                 smoothedCamera = CameraSmoothing.clampStep(smoothedCamera, smoothed, maxStep);
+                // Same cinematic sphere lock as follow/chase — lag rotates, it does not zoom-breathe.
+                smoothedCamera = FollowShotGenerator.lockFocusDistance(smoothedCamera, desired,
+                        target.focusPosition(), distance, delta);
             }
             CameraSample sample = sample(request, context, cinematicTimeAtTick(request, replayTime), replayTime,
                     smoothedCamera, target, previousYaw, previousPitch, delta);

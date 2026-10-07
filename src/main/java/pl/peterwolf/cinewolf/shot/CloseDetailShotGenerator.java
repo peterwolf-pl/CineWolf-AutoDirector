@@ -48,7 +48,8 @@ public final class CloseDetailShotGenerator extends AbstractShotGenerator implem
             Vec3d right = Vec3d.UP.cross(forward).normalizeOr(new Vec3d(1.0, 0.0, 0.0));
             double angle = request.startAngleDegrees() * Math.PI / 180.0
                     + microOrbit * Math.sin(progress * Math.PI * 2.0);
-            double depth = distance * (1.0 - 0.12 * Math.sin(progress * Math.PI));
+            // Gentle one-way ease only — avoid the old ±12% depth sinusoid that read as continuous zoom breathing.
+            double depth = distance * (1.0 - 0.04 * Math.sin(progress * Math.PI));
             Vec3d camera = focus
                     .subtract(forward.multiply(depth * Math.cos(angle * 0.25)))
                     .add(right.multiply(request.options().sideOffset() + depth * Math.sin(angle) * 0.35))

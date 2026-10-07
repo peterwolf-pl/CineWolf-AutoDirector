@@ -49,7 +49,7 @@ export default function DownloadPage() {
       </section>
       <section className="site-section">
         <Callout title="Compatibility warning" tone="warning">
-          <p>CineWolf {compatibility.version} enables its Flashback integration only for Flashback {compatibility.flashbackVersion}. Install the tested Minecraft, Fabric Loader, and Fabric API combination before opening a replay project.</p>
+          <p>CineWolf {compatibility.version} enables its Flashback integration for Flashback {compatibility.flashbackVersion} (0.42.1 and newer 0.x). Install the tested Minecraft, Fabric Loader, and Fabric API combination before opening a replay project.</p>
         </Callout>
       </section>
       <CtaSection

@@ -1,5 +1,6 @@
 package pl.peterwolf.cinewolf.integration.flashback;
 
+import net.minecraft.core.PositionAndRotation;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.InterpolationHandler;
@@ -27,21 +28,54 @@ public final class FlashbackEntityResolver {
         if (interpolationOffset.lengthSqr() > 0.0) {
             box = box.move(interpolationOffset);
         }
-        InterpolationHandler interpolation = entity.getInterpolation();
-        boolean interpolationActive = interpolation != null && interpolation.hasActiveInterpolation();
+
+        // Passenger free-look is useless for cinematic vehicle framing. Prefer the mount's body
+        // orientation, type id (so plane providers match), and expanded bounding volume.
+        Entity vehicle = entity.getVehicle();
+        float yaw;
+        float pitch;
         String entityType = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+        boolean inVehicle = vehicle != null;
+        if (vehicle != null) {
+            Orientation vehicleOrientation = sampleOrientation(vehicle);
+            yaw = vehicleOrientation.yaw();
+            pitch = vehicleOrientation.pitch();
+            entityType = BuiltInRegistries.ENTITY_TYPE.getKey(vehicle.getType()).toString();
+            AABB vehicleBox = vehicle.getBoundingBox();
+            Vec3 vehicleRendered = vehicle.position();
+            Vec3 vehicleStable = stableSamplePosition(vehicle, vehicleRendered);
+            Vec3 vehicleOffset = vehicleStable.subtract(vehicleRendered);
+            if (vehicleOffset.lengthSqr() > 0.0) {
+                vehicleBox = vehicleBox.move(vehicleOffset);
+            }
+            box = box.minmax(vehicleBox);
+        } else {
+            Orientation self = sampleOrientation(entity);
+            yaw = self.yaw();
+            pitch = self.pitch();
+        }
+
         return Optional.of(new TargetPose(
                 vector(position),
                 vector(focus),
                 new BoundingBox(new Vec3d(box.minX, box.minY, box.minZ), new Vec3d(box.maxX, box.maxY, box.maxZ)),
-                interpolationActive ? interpolation.yRot() : entity.getYRot(),
-                interpolationActive ? interpolation.xRot() : entity.getXRot(),
+                yaw,
+                pitch,
                 Vec3d.ZERO,
                 entityType,
-                entity.isPassenger(),
+                inVehicle || entity.isPassenger(),
                 entity.level().dimension().identifier().toString(),
                 false
         ));
+    }
+
+    private static Orientation sampleOrientation(Entity entity) {
+        InterpolationHandler interpolation = entity.getInterpolation();
+        PositionAndRotation target = interpolation != null && interpolation.hasActiveInterpolation()
+                ? interpolation.target() : null;
+        float yaw = target != null ? target.yRot() : entity.getYRot();
+        float pitch = target != null ? target.xRot() : entity.getXRot();
+        return new Orientation(yaw, pitch);
     }
 
     /**
@@ -54,7 +88,9 @@ public final class FlashbackEntityResolver {
     private static Vec3 stableSamplePosition(Entity entity, Vec3 fallback) {
         InterpolationHandler interpolation = entity.getInterpolation();
         if (interpolation == null || !interpolation.hasActiveInterpolation()) return fallback;
-        Vec3 target = interpolation.position();
+        PositionAndRotation destination = interpolation.target();
+        if (destination == null) return fallback;
+        Vec3 target = destination.position();
         if (!Double.isFinite(target.x) || !Double.isFinite(target.y) || !Double.isFinite(target.z)) {
             return fallback;
         }
@@ -80,8 +116,8 @@ public final class FlashbackEntityResolver {
             health = living.getHealth();
             maximumHealth = living.getMaxHealth();
             hurtTime = living.hurtTime;
-            attacking = living.getAttackAnim(0.0f) > 0.01f;
-            swinging = living.swinging;
+            attacking = living.getSwingAnimation(0.0f) > 0.01f;
+            swinging = living.isSwinging();
             elytraFlying = living.isFallFlying();
         }
 
@@ -89,7 +125,7 @@ public final class FlashbackEntityResolver {
         Optional<java.util.UUID> vehicleUuid = vehicle == null ? Optional.empty() : Optional.of(vehicle.getUUID());
         Optional<String> vehicleType = vehicle == null ? Optional.empty()
                 : Optional.of(BuiltInRegistries.ENTITY_TYPE.getKey(vehicle.getType()).toString());
-        // Flashback 0.41.1 does not replay ClientboundPlayerAbilitiesPacket, so creative flight cannot be
+        // Flashback does not replay ClientboundPlayerAbilitiesPacket, so creative flight cannot be
         // treated as direct state. The detector may still infer sustained airborne motion conservatively.
         boolean creativeFlying = false;
         return Optional.of(new ReplayEntitySnapshot(reference, pose, health, maximumHealth, hurtTime,
@@ -114,5 +150,8 @@ public final class FlashbackEntityResolver {
         HitResult hit = entity.level().clip(new ClipContext(start, end, ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE, entity));
         return hit.getType() == HitResult.Type.MISS ? Double.NaN : Math.max(0.0, start.y - hit.getLocation().y);
+    }
+
+    private record Orientation(float yaw, float pitch) {
     }
 }

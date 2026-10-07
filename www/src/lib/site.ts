@@ -30,14 +30,14 @@ export const siteConfig = {
     /\/$/,
     "",
   ),
-  version: configuredText(process.env.NEXT_PUBLIC_CINEWOLF_VERSION, "1.3.11"),
+  version: configuredText(process.env.NEXT_PUBLIC_CINEWOLF_VERSION, "2.0.31"),
   minecraftVersion: configuredText(
     process.env.NEXT_PUBLIC_MINECRAFT_VERSION,
-    "26.2",
+    "26.3",
   ),
   flashbackVersion: configuredText(
     process.env.NEXT_PUBLIC_FLASHBACK_VERSION,
-    "0.41.1",
+    "0.43.4+",
   ),
   downloadUrl: configuredUrl(process.env.NEXT_PUBLIC_CINEWOLF_DOWNLOAD_URL),
   modrinthUrl:

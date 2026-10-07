@@ -19,7 +19,6 @@ import com.moulberry.flashback.state.EditorStateManager;
 import com.moulberry.flashback.state.KeyframeTrack;
 import net.minecraft.client.Minecraft;
 import org.joml.Vector3d;
-import pl.peterwolf.cinewolf.model.EasingType;
 import pl.peterwolf.cinewolf.montage.timeline.MontageTimelineConflictDetector;
 import pl.peterwolf.cinewolf.montage.timeline.MontageTimelineConflictMode;
 import pl.peterwolf.cinewolf.montage.timeline.MontageTimelineConflictReport;
@@ -264,10 +263,10 @@ public final class FlashbackMontageTimelineWriter {
         List<NativeKeyframe> camera = plan.cameraKeyframes().stream().map(point -> new NativeKeyframe(
                 point.timelineTick(), new CameraKeyframe(new Vector3d(point.position().x(), point.position().y(),
                 point.position().z()), (float) point.yaw(), (float) point.pitch(), (float) point.roll(),
-                point.holdAfter() ? InterpolationType.HOLD : interpolation(point.easing())))).toList();
+                point.holdAfter() ? InterpolationType.HOLD : InterpolationType.SMOOTH))).toList();
         List<NativeKeyframe> fov = plan.fovKeyframes().stream().map(point -> new NativeKeyframe(
                 point.timelineTick(), new FOVKeyframe((float) point.fov(),
-                point.holdAfter() ? InterpolationType.HOLD : interpolation(point.easing())))).toList();
+                point.holdAfter() ? InterpolationType.HOLD : InterpolationType.SMOOTH))).toList();
         List<NativeKeyframe> timelapse = plan.timelapseKeyframes().stream().map(point -> new NativeKeyframe(
                 point.timelineTick(), new TimelapseKeyframe(point.outputElapsedTick()))).toList();
         return new NativePayload(camera, fov, timelapse);
@@ -342,15 +341,6 @@ public final class FlashbackMontageTimelineWriter {
                 || generated.timelapse().keyframesByTick.size() != payload.timelapse().size()) {
             throw new IllegalStateException("Flashback montage history entry was only partially applied");
         }
-    }
-
-    private static InterpolationType interpolation(EasingType easing) {
-        return switch (easing) {
-            case LINEAR, SMOOTHSTEP, SMOOTHERSTEP -> InterpolationType.LINEAR;
-            case EASE_IN -> InterpolationType.EASE_IN;
-            case EASE_OUT -> InterpolationType.EASE_OUT;
-            case EASE_IN_OUT_CUBIC -> InterpolationType.EASE_IN_OUT;
-        };
     }
 
     private static String shortId(UUID montageId) {

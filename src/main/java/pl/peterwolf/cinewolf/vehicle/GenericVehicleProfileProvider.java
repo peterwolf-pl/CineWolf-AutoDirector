@@ -1,6 +1,5 @@
 package pl.peterwolf.cinewolf.vehicle;
 
-import pl.peterwolf.cinewolf.camera.CameraMath;
 import pl.peterwolf.cinewolf.model.BoundingBox;
 import pl.peterwolf.cinewolf.model.TargetPose;
 import pl.peterwolf.cinewolf.model.TargetReference;
@@ -30,11 +29,9 @@ public final class GenericVehicleProfileProvider implements VehicleProvider {
     @Override
     public Optional<VehicleDescriptor> describe(TargetReference target, TargetPose pose) {
         try {
-            Vec3d velocity = pose.velocity();
-            Vec3d forward = velocity.length() > 0.08
-                    ? new Vec3d(velocity.x(), 0, velocity.z()).normalizeOr(CameraMath.horizontalDirectionFromYaw(pose.yaw()))
-                    : CameraMath.horizontalDirectionFromYaw(pose.yaw());
-            Vec3d right = Vec3d.UP.cross(forward).normalizeOr(new Vec3d(1, 0, 0));
+            Vec3d forward = VehicleMotion.resolveForward(target, pose);
+            Vec3d up = VehicleMotion.resolveUp(target, pose, forward);
+            Vec3d right = up.cross(forward).normalizeOr(new Vec3d(1, 0, 0));
             BoundingBox box = pose.boundingBox();
             double length = Math.max(0.8, Math.max(box.max().x() - box.min().x(), box.max().z() - box.min().z()));
             double width = Math.max(0.6, Math.min(box.max().x() - box.min().x(), box.max().z() - box.min().z()));
@@ -47,11 +44,12 @@ public final class GenericVehicleProfileProvider implements VehicleProvider {
             anchors.add(new VehicleAnchor(VehicleAnchorKind.REAR, center.subtract(forward.multiply(length * 0.45))));
             anchors.add(new VehicleAnchor(VehicleAnchorKind.LEFT, center.subtract(right.multiply(width * 0.45))));
             anchors.add(new VehicleAnchor(VehicleAnchorKind.RIGHT, center.add(right.multiply(width * 0.45))));
-            anchors.add(new VehicleAnchor(VehicleAnchorKind.TOP, center.add(new Vec3d(0, height * 0.5, 0))));
+            anchors.add(new VehicleAnchor(VehicleAnchorKind.TOP, center.add(up.multiply(height * 0.5))));
             anchors.add(new VehicleAnchor(VehicleAnchorKind.BOTTOM, pose.position()));
             anchors.add(new VehicleAnchor(VehicleAnchorKind.DRIVER, pose.focusPosition()));
-            VehicleCategory category = pose.inVehicle() ? VehicleCategory.GENERIC : VehicleCategory.GENERIC;
-            return Optional.of(new VehicleDescriptor(target, List.of(), category, providerId(), forward, Vec3d.UP,
+            VehicleCategory category = VehicleMotion.isAircraftLike(target, pose)
+                    ? VehicleCategory.AIRCRAFT : VehicleCategory.GENERIC;
+            return Optional.of(new VehicleDescriptor(target, List.of(), category, providerId(), forward, up,
                     box, anchors, length, width, height));
         } catch (RuntimeException exception) {
             return Optional.empty();

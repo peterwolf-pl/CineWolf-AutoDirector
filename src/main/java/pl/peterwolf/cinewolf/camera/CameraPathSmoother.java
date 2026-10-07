@@ -10,11 +10,15 @@ import java.util.List;
 /**
  * Zero-phase, pre-collision camera filter. It removes isolated out-and-back glitches and smooths each
  * continuous shot segment without changing its endpoints or crossing discontinuities.
+ *
+ * <p>Focus distance (camera↔subject radius) is filtered in the same temporal window as direction so
+ * alternating "breathing" zoom is killed while sustained dolly moves still pass through.</p>
  */
 public final class CameraPathSmoother {
     private static final double TIME_EPSILON = 1.0e-9;
     private static final double REVERSAL_DOT_LIMIT = -0.25;
     private static final double MIN_DIRECTION_RESULTANT = 0.25;
+    private static final double MIN_FOCUS_DISTANCE = 0.35;
     private static final double MIN_COMMON_MODE_JITTER = 0.01;
     /** Allow larger shared camera+aim pulses from seek/interpolation outliers (was 0.75). */
     private static final double MAX_COMMON_MODE_JITTER = 6.0;
@@ -172,8 +176,10 @@ public final class CameraPathSmoother {
         int end = segments.end(index);
         WeightedVec3Regression lookAtRegression = new WeightedVec3Regression();
         WeightedVec3Regression directionRegression = new WeightedVec3Regression();
+        WeightedScalarRegression distanceRegression = new WeightedScalarRegression();
 
         Vec3d currentOffset = current.position().subtract(current.lookAtPoint());
+        double currentDistance = Math.max(MIN_FOCUS_DISTANCE, currentOffset.length());
         Vec3d fallbackDirection = currentOffset.normalizeOr(new Vec3d(0.0, 0.0, 1.0));
         for (int neighbor = start; neighbor <= end; neighbor++) {
             CameraSample sample = samples.get(neighbor);
@@ -192,10 +198,15 @@ public final class CameraPathSmoother {
                     Vec3d offset = sample.position().subtract(sample.lookAtPoint());
                     Vec3d direction = offset.normalizeOr(fallbackDirection);
                     directionRegression.add(relativeTime, direction, positionWeight);
+                    // Radius is smoothed independently so radial "breathing" is filtered without
+                    // fighting intentional slow dolly (linear trend survives regression).
+                    distanceRegression.add(relativeTime, Math.max(MIN_FOCUS_DISTANCE, offset.length()),
+                            positionWeight);
                 }
             }
         }
-        if (lookAtRegression.totalWeight() <= TIME_EPSILON && directionRegression.totalWeight() <= TIME_EPSILON) {
+        if (lookAtRegression.totalWeight() <= TIME_EPSILON && directionRegression.totalWeight() <= TIME_EPSILON
+                && distanceRegression.totalWeight() <= TIME_EPSILON) {
             return new SmoothedFrame(current.position(), current.lookAtPoint());
         }
 
@@ -207,16 +218,20 @@ public final class CameraPathSmoother {
                 : directionRegression.valueAtCenter(fallbackDirection);
         Vec3d averageDirection = directionResultant.length() < MIN_DIRECTION_RESULTANT
                 ? fallbackDirection : directionResultant.normalizeOr(fallbackDirection);
+        double averageDistance = distanceRegression.totalWeight() <= TIME_EPSILON
+                ? currentDistance
+                : Math.max(MIN_FOCUS_DISTANCE, distanceRegression.valueAtCenter(currentDistance));
 
         double positionStrength = settings.positionStrength();
-        // Orbit the smoothed aim so position and target stay framed together when target filtering is strong.
-        Vec3d positionBase = current.lookAtPoint().lerp(averageLookAt, Math.max(positionStrength, settings.targetStrength()));
-        Vec3d direction = fallbackDirection.lerp(averageDirection, positionStrength).normalizeOr(fallbackDirection);
-        Vec3d position = positionBase.add(direction.multiply(currentOffset.length()));
-
         // targetStrength is the primary aim filter; rotationStrength remains a secondary legacy blend.
         double targetBlend = Math.max(settings.targetStrength(), settings.rotationStrength() * 0.5);
         Vec3d lookAt = current.lookAtPoint().lerp(averageLookAt, targetBlend);
+        Vec3d direction = fallbackDirection.lerp(averageDirection, positionStrength).normalizeOr(fallbackDirection);
+        // Critical: rebuild on the final look-at with a temporally filtered radius. Using a different
+        // positionBase than lookAt previously introduced unintentional framing zoom each sample.
+        double distance = currentDistance + (averageDistance - currentDistance) * positionStrength;
+        distance = Math.max(MIN_FOCUS_DISTANCE, distance);
+        Vec3d position = lookAt.add(direction.multiply(distance));
         return new SmoothedFrame(position, lookAt);
     }
 
@@ -286,6 +301,35 @@ public final class CameraPathSmoother {
             return weightedValue.multiply(weightedTimeSquared)
                     .subtract(weightedTimeValue.multiply(weightedTime))
                     .multiply(1.0 / denominator);
+        }
+    }
+
+    /** Scalar counterpart of {@link WeightedVec3Regression} for focus distance / FOV trends. */
+    private static final class WeightedScalarRegression {
+        private double weight;
+        private double weightedTime;
+        private double weightedTimeSquared;
+        private double weightedValue;
+        private double weightedTimeValue;
+
+        void add(double relativeTime, double value, double sampleWeight) {
+            if (!Double.isFinite(value) || sampleWeight <= 0.0) return;
+            weight += sampleWeight;
+            weightedTime += sampleWeight * relativeTime;
+            weightedTimeSquared += sampleWeight * relativeTime * relativeTime;
+            weightedValue += sampleWeight * value;
+            weightedTimeValue += sampleWeight * relativeTime * value;
+        }
+
+        double totalWeight() {
+            return weight;
+        }
+
+        double valueAtCenter(double fallback) {
+            if (weight <= TIME_EPSILON) return fallback;
+            double denominator = weight * weightedTimeSquared - weightedTime * weightedTime;
+            if (Math.abs(denominator) <= TIME_EPSILON) return weightedValue / weight;
+            return (weightedValue * weightedTimeSquared - weightedTimeValue * weightedTime) / denominator;
         }
     }
 

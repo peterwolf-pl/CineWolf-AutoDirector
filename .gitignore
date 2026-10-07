@@ -9,3 +9,4 @@ logs/
 *.log.gz
 .DS_Store
 *.zip
+.pi/

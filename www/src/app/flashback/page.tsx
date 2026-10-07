@@ -35,7 +35,7 @@ export default function FlashbackPage() {
               <tr><th scope="row">Minecraft</th><td>{compatibility.minecraftVersion}</td><td>Replay and Fabric runtime target.</td></tr>
               <tr><th scope="row">Fabric Loader</th><td>{compatibility.fabricLoader}</td><td>Client-side Fabric loading requirement.</td></tr>
               <tr><th scope="row">Fabric API</th><td>{compatibility.fabricApi}</td><td>Required Fabric API baseline.</td></tr>
-              <tr><th scope="row">Flashback</th><td>Exactly {compatibility.flashbackVersion}</td><td>Required editor integration. Install separately; it is not bundled.</td></tr>
+              <tr><th scope="row">Flashback</th><td>{compatibility.flashbackVersion}</td><td>Required editor integration (0.42.1 and newer 0.x). Install separately; it is not bundled.</td></tr>
             </tbody>
           </table>
         </div>

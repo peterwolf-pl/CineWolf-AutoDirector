@@ -36,12 +36,16 @@ public final class BlockActivityEventDetector implements ReplayEventDetector {
         for (ReplaySample sample : window.samples()) {
             for (ObservedReplayAction action : sample.actions()) {
                 if (action instanceof ObservedReplayAction.BlockPlaced placed) {
-                    if (window.targetFilter().isEmpty() || placed.actor().map(window::includes).orElse(true)) {
+                    // Actorless placements are ambient world noise (chunk load / growth / seek).
+                    // Previously orElse(true) accepted every actorless packet and flooded the montage.
+                    if (placed.actor().isEmpty()) continue;
+                    if (window.targetFilter().isEmpty() || window.includes(placed.actor().get())) {
                         observations.add(new BlockObservation(ReplayEventType.BLOCK_PLACEMENT, placed.replayTime(),
                                 placed.actor(), placed.location(), placed.blockType()));
                     }
                 } else if (action instanceof ObservedReplayAction.BlockDestroyed destroyed) {
-                    if (window.targetFilter().isEmpty() || destroyed.actor().map(window::includes).orElse(true)) {
+                    if (destroyed.actor().isEmpty()) continue;
+                    if (window.targetFilter().isEmpty() || window.includes(destroyed.actor().get())) {
                         observations.add(new BlockObservation(ReplayEventType.BLOCK_DESTRUCTION, destroyed.replayTime(),
                                 destroyed.actor(), destroyed.location(), destroyed.blockType()));
                     }

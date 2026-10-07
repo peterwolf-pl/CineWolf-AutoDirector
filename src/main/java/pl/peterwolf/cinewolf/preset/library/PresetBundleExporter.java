@@ -35,7 +35,7 @@ public final class PresetBundleExporter {
                 author,
                 "AllRightsReserved",
                 "2.0.0",
-                "0.41.1",
+                "0.42.1",
                 requiredIntegrations,
                 montagePresets,
                 shotPresets,

@@ -58,4 +58,30 @@ class VerticalFramingCorrectorTest {
         assertEquals(0, result.adjustedSamples());
         assertEquals(camera, result.samples().getFirst().position());
     }
+
+    @Test
+    void temporalScaleStabilizationHoldsWideFramingInsteadOfPumping() {
+        // Alternating need for pull-back (1.0 vs 1.4) should not reverse every sample.
+        List<CameraSample> samples = new java.util.ArrayList<>();
+        double[] required = new double[9];
+        for (int index = 0; index < 9; index++) {
+            double time = index * 0.1;
+            samples.add(new CameraSample(time, index * 2L, new Vec3d(0, 2, -6), new Quaternionf(),
+                    0, 0, 0, 70, new Vec3d(0, 2, 0), false, false));
+            required[index] = index % 2 == 0 ? 1.0 : 1.4;
+        }
+        double[] stabilized = VerticalFramingCorrector.temporalStabilizeScales(samples, required);
+        double peakToPeak = 0.0;
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        for (int index = 1; index < stabilized.length - 1; index++) {
+            min = Math.min(min, stabilized[index]);
+            max = Math.max(max, stabilized[index]);
+        }
+        peakToPeak = max - min;
+        assertTrue(peakToPeak < 0.25,
+                "Framing scale still pumps after temporal stabilize: p2p=" + peakToPeak);
+        // Once pulled out, prefer holding wide framing over snapping back to 1.0 every other frame.
+        assertTrue(stabilized[4] > 1.15, "Expected held pull-back around mid shot, got " + stabilized[4]);
+    }
 }

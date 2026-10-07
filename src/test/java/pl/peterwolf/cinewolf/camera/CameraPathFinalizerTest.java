@@ -36,7 +36,7 @@ class CameraPathFinalizerTest {
     @Test
     void recalculatesKeyframeLimitFromCurrentCollisionAnchors() {
         List<CameraSample> samples = List.of(sample(0.0, 0L, 0.0, false),
-                sample(0.5, 10L, 0.5, true), sample(1.0, 20L, 1.0, false));
+                sample(0.5, 10L, 0.5, true, 0.5), sample(1.0, 20L, 1.0, false));
 
         CameraPathPlan result = finalizer.finalizePath(plan(samples, List.of()),
                 new SamplingSettings(12, 100, 2, 1.0, 180.0, 10.0, 2.0));
@@ -51,7 +51,12 @@ class CameraPathFinalizerTest {
     }
 
     private static CameraSample sample(double time, long tick, double x, boolean collisionConstrained) {
-        return new CameraSample(time, tick, new Vec3d(x, 2.0, 0.0), new Quaternionf(), 0.0, 0.0, 0.0,
+        return sample(time, tick, x, collisionConstrained, 0.0);
+    }
+
+    private static CameraSample sample(double time, long tick, double x, boolean collisionConstrained,
+                                       double yOffset) {
+        return new CameraSample(time, tick, new Vec3d(x, 2.0 + yOffset, 0.0), new Quaternionf(), 0.0, 0.0, 0.0,
                 70.0, new Vec3d(x, 2.0, 8.0), false, collisionConstrained);
     }
 }

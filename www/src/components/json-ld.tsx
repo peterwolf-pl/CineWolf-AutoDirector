@@ -51,8 +51,8 @@ export function SoftwareApplicationJsonLd() {
         applicationSubCategory: "Minecraft cinematic replay camera tool",
         softwareRequirements: [
           `Minecraft ${siteConfig.minecraftVersion}`,
-          "Fabric Loader 0.19.3 or newer",
-          "Fabric API 0.153.0+26.2",
+          "Fabric Loader 0.19.5 or newer",
+          "Fabric API 0.160.7+26.3",
           `Flashback ${siteConfig.flashbackVersion}`,
         ],
         ...(siteConfig.downloadUrl ? { downloadUrl: siteConfig.downloadUrl } : {}),

@@ -32,4 +32,16 @@ class CameraMathTest {
         assertEquals(42.0, orientation.yaw(), 1.0e-9);
         assertTrue(Float.isFinite(orientation.quaternion().w));
     }
+
+    @Test
+    void directionFromYawPitchMatchesMinecraftLookVector() {
+        Vec3d south = CameraMath.directionFromYawPitch(0.0, 0.0);
+        assertEquals(0.0, south.x(), 1.0e-6);
+        assertEquals(0.0, south.y(), 1.0e-6);
+        assertEquals(1.0, south.z(), 1.0e-6);
+
+        Vec3d noseUp = CameraMath.directionFromYawPitch(0.0, -30.0);
+        assertTrue(noseUp.y() > 0.4);
+        assertTrue(noseUp.z() > 0.7);
+    }
 }

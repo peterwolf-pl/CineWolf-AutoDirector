@@ -108,7 +108,7 @@ public final class CineWolfAutoDirectorClient implements ClientModInitializer {
             if (verticalSafeAreaOverlay != null) verticalSafeAreaOverlay.hide();
             if (brandWatermark != null) brandWatermark.setActive(false);
         });
-        LOGGER.info("CineWolf AutoDirector {} initialized for Minecraft 26.2 and Flashback {}",
+        LOGGER.info("CineWolf AutoDirector {} initialized for Minecraft 26.3 and Flashback {}",
                 CineWolfAutoDirector.VERSION, FlashbackCompatibility.SUPPORTED_VERSION);
     }
 

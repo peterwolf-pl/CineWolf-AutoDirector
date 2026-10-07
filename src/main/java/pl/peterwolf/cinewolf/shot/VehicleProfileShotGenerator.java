@@ -44,6 +44,7 @@ public final class VehicleProfileShotGenerator extends AbstractShotGenerator imp
             double delta = i == 0 ? request.durationSeconds() / Math.max(1, replayTicks.size() - 1)
                     : cinematicTimeAtTick(request, replayTime) - cinematicTimeAtTick(request, replayTicks.get(i - 1));
             TargetPose target = requiredPose(request, context, replayTime);
+            // Rebuild descriptor each sample so forward tracks flight direction as velocity/yaw update.
             VehicleDescriptor vehicle = vehicles.requireOrGeneric(request.target(), target);
             VehicleProfileStyle style = resolveStyle(request, vehicle);
             Vec3d desired = profilePosition(request, target, vehicle, style, progress);

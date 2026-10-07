@@ -9,7 +9,6 @@ import pl.peterwolf.cinewolf.camera.CameraPathPlanner;
 import pl.peterwolf.cinewolf.camera.SampledTargetPoseResolver;
 import pl.peterwolf.cinewolf.integration.flashback.FlashbackReplayEditorAdapter;
 import pl.peterwolf.cinewolf.model.CameraPathPlan;
-import pl.peterwolf.cinewolf.model.PathWarning;
 import pl.peterwolf.cinewolf.model.ReplayContext;
 import pl.peterwolf.cinewolf.model.SamplingSettings;
 import pl.peterwolf.cinewolf.model.ShotRequest;
@@ -169,16 +168,7 @@ public final class PreviewController implements AutoCloseable {
             try {
                 ReplayContext context = new ReplayContext(new SampledTargetPoseResolver(job.poses), job.settings,
                         job.adaptiveCameraTicks);
-                CameraPathPlan generated = planner.generate(job.request, context);
-                if (job.request.easing() == pl.peterwolf.cinewolf.model.EasingType.SMOOTHSTEP
-                        || job.request.easing() == pl.peterwolf.cinewolf.model.EasingType.SMOOTHERSTEP) {
-                    List<PathWarning> warnings = new ArrayList<>(generated.warnings());
-                    warnings.add(new PathWarning(PathWarning.Severity.WARNING, "easing_baked",
-                            "Flashback has no exact native mapping for this easing; CineWolf baked it into linear samples", 0.0));
-                    generated = new CameraPathPlan(generated.request(), generated.samples(), generated.simplifiedSamples(),
-                            warnings, generated.statistics());
-                }
-                CameraPathPlan result = generated;
+                CameraPathPlan result = planner.generate(job.request, context);
                 Minecraft.getInstance().execute(() -> acceptGenerated(job, result));
             } catch (RuntimeException exception) {
                 logger.error("CineWolf path generation failed", exception);

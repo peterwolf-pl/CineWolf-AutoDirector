@@ -46,7 +46,10 @@ public final class FlashbackCompatibility {
     /** Logs the compatibility failure at most once per process. */
     public static void logFailureOnce(org.slf4j.Logger logger) {
         if (LOGGED.compareAndSet(false, true)) {
-            logger.error("{}. Supported range: exactly {}.", failureMessage(), SUPPORTED_VERSION);
+            logger.error("{}. Supported range: {}+ (recommended {}).",
+                    failureMessage(),
+                    FlashbackCompatibilityRegistry.MIN_SUPPORTED_VERSION,
+                    SUPPORTED_VERSION);
         }
     }
 }

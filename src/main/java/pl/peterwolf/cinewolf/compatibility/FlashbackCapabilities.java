@@ -30,7 +30,13 @@ public record FlashbackCapabilities(
         );
     }
 
-    public static FlashbackCapabilities flashback0411() {
+    /** Capability surface for Flashback 0.42.1+ / 0.43.4+ (MC 26.3). Same public editor surface as 0.41.1. */
+    public static FlashbackCapabilities flashback0434() {
+        return flashback0421();
+    }
+
+    /** Capability surface validated on Flashback 0.42.1 (MC 26.2) and carried to 26.3. Same public editor surface as 0.41.1. */
+    public static FlashbackCapabilities flashback0421() {
         return new FlashbackCapabilities(
                 true,  // camera position
                 true,  // camera rotation
@@ -47,6 +53,12 @@ public record FlashbackCapabilities(
                 true,  // restore tick/pause/selection
                 false  // no public custom metadata track
         );
+    }
+
+    /** @deprecated use {@link #flashback0421()} */
+    @Deprecated
+    public static FlashbackCapabilities flashback0411() {
+        return flashback0421();
     }
 
     public Set<String> enabledFeatures() {

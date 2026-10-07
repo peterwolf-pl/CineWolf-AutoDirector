@@ -14,11 +14,11 @@ export interface Compatibility {
 }
 
 export const compatibility: Compatibility = {
-  version: "1.3.11",
-  minecraftVersion: "26.2",
-  fabricLoader: ">=0.19.3",
-  fabricApi: "0.153.0+26.2",
-  flashbackVersion: "0.41.1",
+  version: "2.0.31",
+  minecraftVersion: "26.3",
+  fabricLoader: ">=0.19.5",
+  fabricApi: "0.160.7+26.3",
+  flashbackVersion: "0.43.4+",
   keyframes: ["Camera", "FOV", "Replay-time (Timelapse)"],
   limitations: [
     "Vertical presets provide 9:16 composition metadata and a safe-area guide; they do not crop, resize, render, encode, or upload video.",
@@ -27,7 +27,7 @@ export const compatibility: Compatibility = {
   ],
   warnings: [
     "Install Flashback separately. CineWolf does not bundle, copy, or modify it.",
-    "CineWolf enables its editor integration only when the installed Flashback version is exactly 0.41.1.",
+    "CineWolf enables its editor integration for Flashback 0.42.1 and newer 0.x builds (recommended 0.43.4).",
     "Use the supported Minecraft, Fabric Loader, and Fabric API combination before opening a replay project.",
   ],
 };

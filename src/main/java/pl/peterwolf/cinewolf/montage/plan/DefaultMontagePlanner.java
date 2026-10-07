@@ -220,7 +220,8 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                                          ReplayAnalysisResult analysis, MontageRequest request,
                                          MontagePlanningContext context, List<MontageWarning> warnings) {
         ReplayEvent event = scored.event();
-        SourceInterval interval = new SourceInterval(sourceStart, sourceEnd);
+        SourceInterval interval = forwardSourceInterval(sourceStart, sourceEnd, event.peakReplayTime(),
+                request.sourceStartReplayTime(), request.sourceEndReplayTime());
         double actualSpeed = ((interval.end - interval.start) / 20.0) / duration;
         boolean vertical = request.aspectRatio()
                 == pl.peterwolf.cinewolf.montage.preset.OutputAspectRatio.VERTICAL_9_16;
@@ -589,8 +590,10 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                         .thenComparing(value -> value.event().peakReplayTime())
                         .thenComparing(value -> value.event().eventId()))
                 .toList();
-        for (int count = maxCount; count >= minCount; count--) {
-            if ((long) count * minOut > budget) continue;
+        // Always try down to a single shot. Clustered/identical peaks cannot fill a 3–5 shot grid
+        // without collapsing source windows to zero length.
+        for (int count = maxCount; count >= 1; count--) {
+            if (count > 1 && (long) count * minOut > budget) continue;
             List<ScoredReplayEvent> base = selectDiverseEvents(ranked, count);
             if (base.isEmpty()) continue;
             List<ScoredReplayEvent> selection = chronological(repeatToCount(base, count));
@@ -816,9 +819,12 @@ public final class DefaultMontagePlanner implements MontagePlanner {
     private static Optional<long[][]> fitHighlightWindows(List<ScoredReplayEvent> events, int[] sourceTicks,
                                                           long rangeStart, long rangeEnd, int minimumLength) {
         int count = events.size();
-        if (count == 0 || sourceTicks.length != count) return Optional.empty();
-        // At least 4 source ticks so hard-cut boundaries can keep ≥2 editable keys per shot.
-        int minLen = Math.max(4, minimumLength);
+        if (count == 0 || sourceTicks.length != count || rangeEnd <= rangeStart) return Optional.empty();
+        long available = rangeEnd - rangeStart;
+        // Prefer ≥4 source ticks so hard-cut boundaries can keep ≥2 editable keys, but never more than
+        // the selected range can hold — otherwise clustered peaks collapse to zero-length windows.
+        int minLen = (int) Math.max(1L, Math.min(available, Math.max(1, minimumLength)));
+        if (available >= 4) minLen = Math.max(minLen, Math.min(4, (int) available));
         long[] starts = new long[count];
         long[] ends = new long[count];
         long previousEnd = rangeStart;
@@ -828,17 +834,16 @@ public final class DefaultMontagePlanner implements MontagePlanner {
             if (desired <= 0 || peak < rangeStart || peak > rangeEnd) return Optional.empty();
 
             // If the previous window extends past this peak, shrink it so the peak is reachable without
-            // reversing source order (previous must still contain its own peak).
+            // reversing source order. The previous shot must keep a forward duration and its own peak.
             if (index > 0 && previousEnd > peak) {
                 long prevPeak = events.get(index - 1).event().peakReplayTime();
-                if (starts[index - 1] <= prevPeak && prevPeak <= ends[index - 1]) {
-                    long shrunkEnd = Math.max(prevPeak, Math.min(previousEnd, peak));
-                    // Keep at least minLen on previous when possible.
+                long minEnd = Math.max(starts[index - 1] + 1, prevPeak);
+                if (peak >= minEnd) {
+                    long shrunkEnd = Math.max(minEnd, Math.min(previousEnd, peak));
                     if (shrunkEnd - starts[index - 1] < minLen && prevPeak + minLen <= peak) {
-                        shrunkEnd = Math.min(peak, starts[index - 1] + minLen);
-                        if (shrunkEnd < prevPeak) shrunkEnd = prevPeak;
+                        shrunkEnd = Math.min(peak, Math.max(minEnd, starts[index - 1] + minLen));
                     }
-                    if (shrunkEnd >= prevPeak && shrunkEnd >= starts[index - 1]) {
+                    if (shrunkEnd > starts[index - 1] && shrunkEnd >= prevPeak && shrunkEnd <= rangeEnd) {
                         ends[index - 1] = shrunkEnd;
                         previousEnd = shrunkEnd;
                     }
@@ -846,7 +851,7 @@ public final class DefaultMontagePlanner implements MontagePlanner {
             }
 
             boolean placed = false;
-            long maxLen = Math.min(desired, rangeEnd - rangeStart);
+            long maxLen = Math.min(Math.max(desired, minLen), available);
             for (long length = maxLen; length >= minLen; length--) {
                 // Prefer non-overlapping placement after previousEnd (jumps forward are OK).
                 long lower = Math.max(previousEnd, Math.max(rangeStart, peak - length));
@@ -871,36 +876,59 @@ public final class DefaultMontagePlanner implements MontagePlanner {
                 }
             }
             if (!placed) {
-                // Last resort: minimal window ending at/after peak, starting at previousEnd or peak-centered.
-                long length = minLen;
-                long start = Math.min(peak, Math.max(previousEnd, Math.max(rangeStart, peak - length + 1)));
-                long end = start + length;
+                long start = Math.min(peak, Math.max(previousEnd, Math.max(rangeStart, peak - minLen + 1)));
+                long end = start + minLen;
                 if (end > rangeEnd) {
                     end = rangeEnd;
-                    start = Math.max(rangeStart, Math.max(previousEnd, end - length));
+                    start = Math.max(rangeStart, Math.max(previousEnd, end - minLen));
                 }
-                if (start > peak || end < peak || start < previousEnd && previousEnd > rangeStart) {
-                    // Independent jump around peak (only if previousEnd already passed — shouldn't).
-                    start = Math.max(rangeStart, Math.min(peak, rangeEnd - length));
-                    end = start + length;
-                    if (end > rangeEnd) {
-                        end = rangeEnd;
-                        start = Math.max(rangeStart, end - length);
-                    }
-                    if (start < previousEnd) {
-                        // Cannot go backwards; force minimal forward window from previousEnd.
-                        start = previousEnd;
-                        end = Math.min(rangeEnd, Math.max(start + length, peak + 1));
-                        if (peak < start || peak > end) return Optional.empty();
-                    }
+                if (start < previousEnd) {
+                    start = previousEnd;
+                    end = Math.min(rangeEnd, Math.max(start + 1, peak == rangeEnd ? rangeEnd : peak + 1));
                 }
-                if (peak < start || peak > end || start < rangeStart || end > rangeEnd) return Optional.empty();
+                if (end <= start || peak < start || peak > end || start < rangeStart || end > rangeEnd) {
+                    return Optional.empty();
+                }
                 starts[index] = start;
                 ends[index] = end;
                 previousEnd = end;
             }
+            if (ends[index] <= starts[index]) return Optional.empty();
+        }
+        for (int index = 0; index < count; index++) {
+            long peak = events.get(index).event().peakReplayTime();
+            if (ends[index] <= starts[index] || peak < starts[index] || peak > ends[index]) {
+                return Optional.empty();
+            }
+            if (index > 0 && starts[index] < ends[index - 1]) return Optional.empty();
         }
         return Optional.of(new long[][]{starts, ends});
+    }
+
+    /** Guarantee a strictly increasing source window that still contains the event peak when possible. */
+    private static SourceInterval forwardSourceInterval(long start, long end, long peak,
+                                                        long rangeStart, long rangeEnd) {
+        long lo = Math.max(rangeStart, Math.min(start, end));
+        long hi = Math.min(rangeEnd, Math.max(start, end));
+        if (peak < rangeStart) peak = rangeStart;
+        if (peak > rangeEnd) peak = rangeEnd;
+        if (peak < lo) {
+            lo = Math.max(rangeStart, peak);
+        } else if (peak > hi) {
+            hi = Math.min(rangeEnd, peak);
+        }
+        if (hi <= lo) {
+            if (lo < rangeEnd) {
+                hi = Math.min(rangeEnd, lo + 1);
+            } else {
+                hi = rangeEnd;
+                lo = Math.max(rangeStart, hi - 1);
+            }
+        }
+        if (hi <= lo) {
+            throw new IllegalArgumentException("Shot source time must move forwards");
+        }
+        return new SourceInterval(lo, hi);
     }
 
     private static ContinuousLayout continuousLayout(List<ScoredReplayEvent> candidates, MontageRequest request) {

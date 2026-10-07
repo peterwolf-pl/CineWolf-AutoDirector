@@ -25,6 +25,21 @@ public final class CameraMath {
         return new Vec3d(-Math.sin(radians), 0.0, Math.cos(radians)).normalizeOr(new Vec3d(0.0, 0.0, 1.0));
     }
 
+    /**
+     * Minecraft look/body direction from yaw + pitch (degrees). Matches entity view vector:
+     * yaw 0 = +Z (south), positive pitch looks down.
+     */
+    public static Vec3d directionFromYawPitch(double yawDegrees, double pitchDegrees) {
+        double yaw = Math.toRadians(yawDegrees);
+        double pitch = Math.toRadians(pitchDegrees);
+        double cosPitch = Math.cos(pitch);
+        return new Vec3d(
+                -Math.sin(yaw) * cosPitch,
+                -Math.sin(pitch),
+                Math.cos(yaw) * cosPitch
+        ).normalizeOr(new Vec3d(0.0, 0.0, 1.0));
+    }
+
     public static double pointLineDistance(Vec3d point, Vec3d start, Vec3d end) {
         Vec3d line = end.subtract(start);
         double lengthSquared = line.lengthSquared();
