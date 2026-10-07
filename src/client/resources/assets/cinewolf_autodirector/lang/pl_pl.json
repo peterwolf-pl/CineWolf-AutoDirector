@@ -1,5 +1,12 @@
 {
   "cinewolf.panel.title": "CineWolf AutoDirector",
+  "cinewolf.tab.timelapse": "Timelapse",
+  "cinewolf.timelapse.description": "Przyspiesza czas replaya podczas eksportu Flashback bez obniżania FPS filmu wynikowego.",
+  "cinewolf.timelapse.speed": "Krotność przyspieszenia",
+  "cinewolf.timelapse.speed_tooltip": "x10 przesuwa czas replaya 10 razy szybciej na każdą klatkę wynikową. x1 wyłącza timelapse.",
+  "cinewolf.timelapse.status.normal": "Timelapse wyłączony - normalny eksport x1.",
+  "cinewolf.timelapse.status.active": "Aktywny: x%s. Flashback renderuje około %s%% normalnej liczby klatek.",
+  "cinewolf.timelapse.sampling": "Encoder zachowuje FPS wybrany w Flashback. CineWolf próbkuje replay x%s szybciej, więc zbędne klatki pośrednie nie są renderowane.",
   "cinewolf.field.target": "Cel",
   "cinewolf.field.shot_type": "Typ ujęcia",
   "cinewolf.field.diameter": "Średnica",
