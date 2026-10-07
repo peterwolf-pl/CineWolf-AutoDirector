@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.34 - 2026-10-07
+
+- Added a third AutoDirector tab: **Timelapse**
+  - Configure replay acceleration from x1 up to x1000
+  - x10 samples replay time 10x faster while keeping Flashback's selected output FPS
+  - Flashback renders only frames needed for the accelerated result instead of rendering every normal-speed frame
+  - x1 leaves the existing Flashback export behaviour unchanged
+
 ## 2.0.33 - 2026-10-01
 
 - Camera keyframes are no longer written on every player step
